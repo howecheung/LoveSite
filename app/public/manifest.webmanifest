@@ -1,0 +1,31 @@
+{
+ "name": "情侣小站",
+ "short_name": "小站",
+ "description": "我们自己的动森风情侣记录站，数据在自己 NAS",
+ "start_url": "/",
+ "scope": "/",
+ "display": "standalone",
+ "background_color": "#ffe8ef",
+ "theme_color": "#c2456e",
+ "lang": "zh-CN",
+ "icons": [
+  {
+   "src": "/icons/icon-192.png",
+   "sizes": "192x192",
+   "type": "image/png",
+   "purpose": "any"
+  },
+  {
+   "src": "/icons/icon-512.png",
+   "sizes": "512x512",
+   "type": "image/png",
+   "purpose": "any"
+  },
+  {
+   "src": "/icons/icon-512-maskable.png",
+   "sizes": "512x512",
+   "type": "image/png",
+   "purpose": "maskable"
+  }
+ ]
+}

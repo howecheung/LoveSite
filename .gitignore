@@ -1,0 +1,7 @@
+node_modules/
+dist/
+pb_data/
+pb_public/
+pb.log
+CREDENTIALS.txt
+*.env
