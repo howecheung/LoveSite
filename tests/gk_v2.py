@@ -1,7 +1,7 @@
 """gk_v2: 每步 dump，串行推进"""
 import asyncio, json, base64, urllib.request, websockets
 B = "http://127.0.0.1:9333"
-OUT = "/vol1/@apphome/hermes-webui/data/workspace/ai-couple/shots"
+OUT = os.environ.get("PB_OUT_DIR", ".")
 
 class PG:
     def __init__(self): self.n = 0

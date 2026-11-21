@@ -1,5 +1,6 @@
 import json, re, urllib.request
-txt = open("/vol1/@apphome/hermes-webui/data/workspace/ai-couple/CREDENTIALS.txt").read()
+import os
+txt = os.environ.get("PB_CREDENTIALS", "")  # 超管邮箱与口令两行，自行注入
 em = re.search(r"超管 (\S+)", txt).group(1); pw = re.search(r"超管 \S+\s+(\S+)", txt).group(1)
 req = urllib.request.Request("http://127.0.0.1:8094/api/collections/_superusers/auth-with-password", method="POST")
 req.add_header("Content-Type", "application/json")

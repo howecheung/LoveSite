@@ -1,6 +1,6 @@
 """gk_fx: 终局特效 + 再来一局/换色 200 验证"""
 import asyncio
-src = open("/vol1/@apphome/hermes-webui/data/workspace/ai-couple//vol1/@apphome/hermes-webui/data/workspace/ai-couple/tests/gk_v2.py").read()
+src = open("gk_v2.py").read()
 src = src.split("asyncio.run(")[0]
 ns = {}
 exec(compile(src, "gk_v2_lib", "exec"), ns)

@@ -1,6 +1,6 @@
 """gk_room: 房号加入 + 悔棋只退一手 + 穿模复查"""
 import asyncio, re
-src = open("/vol1/@apphome/hermes-webui/data/workspace/ai-couple//vol1/@apphome/hermes-webui/data/workspace/ai-couple/tests/gk_v2.py").read()
+src = open("gk_v2.py").read()
 src = src.split("asyncio.run(")[0]
 ns = {}
 exec(compile(src, "gk_v2_lib", "exec"), ns)
