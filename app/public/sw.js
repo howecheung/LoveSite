@@ -1,5 +1,5 @@
 // 情侣小站 PWA：页面壳联网优先（发版即生效），哈希资源缓存优先，API 一律走网络
-const V = 'aicouple-v57';
+const V = 'aicouple-v85';
 const SHELL = ['/manifest.webmanifest', '/icons/icon-192.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(V).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));

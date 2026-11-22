@@ -6,6 +6,9 @@ import { spring, pageVariants, tapSmall, listVariant, itemVariant } from './moti
 import { Ic } from './Icons'
 import { pb, quiet, showToast } from './core'
 import { Games, GomokuHome, GomokuLive, GomokuLocal } from './Gomoku'
+import { TILES, resolveTiles, PageTileMgr } from './Tiles'
+import { C4Home, C4Live } from './Connect4'
+import { FlyHome, FlyLive, FlyLocal } from './Flying'
 import { nextOccurLunar, readExif, sha256, lunarToday, solarToLunar } from './utils'
 const exifLine = (t: string) => { try { const j = JSON.parse(t); const a: string[] = []; if (j.date) a.push(j.date.slice(0, 10).replace(/:/g, '-')); if (j.cam) a.push(j.cam); if (j.gps) a.push('GPS ' + j.gps.join(',')); return a.join(' · ') } catch { return '' } }
 const lmdText = (md: string) => { const [m, d] = md.split('-').map(Number); const LM = ['正','二','三','四','五','六','七','八','九','十','冬','腊']; const LD = ['初一','初二','初三','初四','初五','初六','初七','初八','初九','初十','十一','十二','十三','十四','十五','十六','十七','十八','十九','二十','廿一','廿二','廿三','廿四','廿五','廿六','廿七','廿八','廿九','三十']; return LM[m - 1] + '月' + LD[d - 1] }
@@ -35,20 +38,6 @@ const sinceParts = (d: string) => {
   return { h: Math.floor(ms / 3600000) % 24, m: Math.floor(ms / 60000) % 60, s: Math.floor(ms / 1000) % 60 }
 }
 
-const TILES = [
-  { k: 'album', ic: '🎬', t: '时光相册', s: '留住你我记忆', c: 'app-pink' },
-  { k: 'diary', ic: '📔', t: '恋爱日常', s: '记录点滴时光', c: 'app-yellow' },
-  { k: 'bill', ic: '💰', t: '记账', s: '记录生活收支', c: 'app-green' },
-  { k: 'wardrobe', ic: '👗', t: '衣柜', s: '整理你的穿搭', c: 'purple' },
-  { k: 'promise', ic: '📋', t: '爱情清单', s: '甜蜜约定', c: 'lime-green' },
-  { k: 'tools', ic: '🧰', t: '小工具', s: '吃什么·去哪玩', c: 'app-orange' },
-  { k: 'period', ic: '🩸', t: '经期记录', s: '关爱她的每一天', c: 'warm-peach-pink' },
-  { k: 'checkin', ic: '📌', t: '打卡计划', s: '坚持每日打卡', c: 'app-blue' },
-  { k: 'message', ic: '💬', t: '祝福语', s: '写下祝福', c: 'app-teal' },
-  { k: 'countdown', ic: '⏳', t: '倒计时', s: '重要的日子', c: 'brown' },
-  { k: 'games', ic: '🎮', t: '小游戏', s: '双人同乐', c: 'app-teal' },
-  { k: 'about', ic: '👩‍❤️‍👨', t: '关于我们', s: '我们的故事', c: 'app-red' },
-]
 const NAV = [
   { k: 'home', ic: '🏠', t: '首页' },
   { k: 'diary', ic: '📔', t: '日常' },
@@ -61,6 +50,41 @@ export default function App() {
   const [authed, setAuthed] = useState(pb.authStore.isValid)
   if (!authed) return <Login onOK={() => setAuthed(true)} />
   return <Site onOut={() => { pb.authStore.clear(); setAuthed(false) }} />
+}
+
+// 上传前压缩：iPhone 48MP 巨照（40MB+）会顶爆服务端请求上限变 400；
+// 统一压到长边 2400 JPEG(85%)，顺带把 HEIC 转成通用 JPEG。GIF/小图直传保动图。
+async function compressImg(fl: File): Promise<File> {
+  try {
+    if (fl.type === 'image/gif' || fl.size < 1.5 * 1048576) return fl
+    const bmp: any = await createImageBitmap(fl)
+    const sc = Math.min(1, 2400 / Math.max(bmp.width || 2400, bmp.height || 2400))
+    const cv = document.createElement('canvas')
+    cv.width = Math.max(1, Math.round((bmp.width || 2400) * sc)); cv.height = Math.max(1, Math.round((bmp.height || 2400) * sc))
+    cv.getContext('2d')!.drawImage(bmp, 0, 0, cv.width, cv.height)
+    if (bmp.close) bmp.close()
+    const blob: any = await new Promise((r) => cv.toBlob(r, 'image/jpeg', 0.85))
+    if (!blob) return fl
+    return new File([blob], fl.name.replace(/\.(heic|heif)$/i, '.jpg'), { type: 'image/jpeg', lastModified: Date.now() })
+  } catch { return fl }
+}
+
+// 天数滚动计数：easeOutExpo（与官方 CountUp 同曲线），输出普通 <b> 保持行内排版
+const CountNum = ({ end }: { end: number }) => {
+  const [v, setV] = useState(0)
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { setV(end); return }
+    let raf = 0
+    const t0 = performance.now(), D = 1100
+    const step = (t: number) => {
+      const k = Math.min(1, (t - t0) / D)
+      setV(Math.max(0, Math.round(end * (1 - Math.pow(2, -10 * k)))))
+      if (k < 1) raf = requestAnimationFrame(step)
+    }
+    raf = requestAnimationFrame(step)
+    return () => cancelAnimationFrame(raf)
+  }, [end])
+  return <b>{v}</b>
 }
 
 function Login({ onOK }: any) {
@@ -78,8 +102,8 @@ function Login({ onOK }: any) {
         </div>
         <div style={{ textAlign: 'center', color: '#a08b76', fontSize: 13, marginBottom: 18 }}>爱是相伴，此心安处是吾乡</div>
         <div className="aifrm">
-          <Input placeholder="账号，如 boy@local.test" value={u} onChange={(e: any) => setU(e.target.value)} />
-          <Input type="password" placeholder="密令" value={p} onChange={(e: any) => setP(e.target.value)} onPressEnter={go} />
+          <Input placeholder="账号（zwh / mm）" value={u} onChange={(e: any) => setU(e.target.value)} />
+          <Input type="password" placeholder="密令（不限字数）" value={p} onChange={(e: any) => setP(e.target.value)} onPressEnter={go} />
           {err && <div style={{ color: '#d0455f', fontSize: 13 }}>{err}</div>}
           <Button type="primary" block onClick={go}>进入小站</Button>
         </div>
@@ -149,14 +173,14 @@ function Site({ onOut }: any) {
     setDir(-1); setRoute(prev); window.scrollTo(0, 0)
   }
   const isMain = route === 'home' || route === 'more'
-  const [theme, setTheme] = useState(() => localStorage.getItem('ai-theme') || 'rose')
+  const [theme, setTheme] = useState(() => { const t = localStorage.getItem('ai-theme'); return t === 'island' ? 'island' : 'rose' })
   const [night, setNight] = useState(() => localStorage.getItem('ai-night') === '1')
-  useEffect(() => { document.body.classList.toggle('theme-forest', theme === 'forest'); localStorage.setItem('ai-theme', theme) }, [theme])
+  useEffect(() => { document.body.classList.toggle('theme-island', theme === 'island'); localStorage.setItem('ai-theme', theme) }, [theme])
   useEffect(() => { document.body.classList.toggle('night', night); localStorage.setItem('ai-night', night ? '1' : '0') }, [night])
 
   return (
     <MotionConfig reducedMotion="user">
-    <Background type={theme === 'forest' ? 'dots-yellow-green' : 'dots-pink'} style={{ minHeight: '100vh' }}>
+    <Background type={theme === 'island' ? 'dots-yellow-green' : 'dots-pink'} style={{ minHeight: '100vh' }}>
       <div className="shell">
         <Card className="side" style={{ padding: 12 }}>
           <div className="brand"><Ic v="couple" size={18} /> {data.setting?.siteName || '情侣小站'}</div>
@@ -177,7 +201,7 @@ function Site({ onOut }: any) {
           <div className="hrow">
             {!MAINR.includes(route) && <motion.button {...tapSmall} className="backbtn" onClick={back}><Ic v="arrowL" size={14} /> 返回</motion.button>}
             {route === 'home' && <span className="dchip" onClick={() => go('home')}><Ic v="❤️" size={11} w="fill" /> 第 {data.setting ? daysSince(data.setting.startDate) : 0} 天</span>}
-            <div className="htitle">{route === 'home' ? (data.setting?.siteName || '情侣小站') : ({ backup: '数据备份', more: '更多', games: '小游戏', gomoku: '五子棋', 'gomoku-play': '五子棋 · 对局', 'gomoku-local': '五子棋 · 同屏', 'album-view': '相册' } as any)[route] || (TILES.find((t) => t.k === route)?.t || '')}</div>
+            <div className="htitle">{route === 'home' ? (data.setting?.siteName || '情侣小站') : ({ backup: '数据备份', more: '更多', tilemgr: '功能卡片', c4: '四子棋', 'c4-play': '四子棋 · 对局', fly: '情侣飞行棋', 'fly-play': '飞行棋 · 对局', 'fly-local': '飞行棋 · 同屏', games: '小游戏', gomoku: '五子棋', 'gomoku-play': '五子棋 · 对局', 'gomoku-local': '五子棋 · 同屏', 'album-view': '相册' } as any)[route] || (TILES.find((t) => t.k === route)?.t || '')}</div>
             <div className="hacts">
               <button className="hbtn" onClick={() => setModal('search')}><Ic v="🔍" size={16} /></button>
               <button className="hbtn" onClick={() => setModal('notice')}><Ic v="🔔" size={16} /></button>
@@ -196,15 +220,15 @@ function Site({ onOut }: any) {
               <Card className="daycard blk" onClick={() => setModal('days')}>
                 <div className="dleft">
                   <div className="l1">今天，是我们在一起的</div>
-                  <div className="l2">第 <b>{data.setting ? daysSince(data.setting.startDate) : 0}</b> 天</div>
+                  <div className="l2">第 <CountNum end={data.setting ? daysSince(data.setting.startDate) : 0} /> 天</div>
                   <div className="l3"><Clock start={data.setting?.startDate} /> · 农历{lunarToday()}</div>
                 </div>
                 <div className="dv" />
                 <div className="l4">“{data.setting?.quote || '爱是相伴，此心安处是吾乡'}”</div>
               </Card>
               <div className="tiles">
-                {TILES.map((t, i) => (
-                  <Card key={t.k} color="default" hoverable className="tile" data-t={(i % 3) + 1} onClick={() => go(t.k)}>
+                {resolveTiles(data.setting?.tiles).map((t: any, i: number) => (
+                  <Card key={t.k} color="default" hoverable className="tile" data-t={(i % 3) + 1} style={{ ['--i' as any]: i }} onClick={() => (t.url ? window.open(t.url, '_blank', 'noopener') : go(t.k))}>
                     <span className="ic"><Ic v={t.ic} /></span>
                     <span className="t">{t.t}</span><span className="s">{t.s}</span>
                   </Card>
@@ -228,9 +252,15 @@ function Site({ onOut }: any) {
           {route === 'period' && <Stub ic="🩸" t="经期记录" s="健康记录开发中，敬请期待" color="warm-peach-pink" />}
           {route === 'more' && <More data={data} onOut={onOut} setModal={setModal} me={me} go={go} night={night} setNight={setNight} theme={theme} setTheme={setTheme} />}
           {route === 'games' && <Games go={go} />}
+          {route === 'tilemgr' && <PageTileMgr data={data} />}
           {route === 'album-view' && <AlbumView id={ctx} data={data} reload={load} go={go} />}
           {route === 'gomoku' && <GomokuHome data={data} go={go} me={me} />}
           {route === 'gomoku-play' && <GomokuLive id={ctx} data={data} go={go} me={me} />}
+          {route === 'c4' && <C4Home go={go} data={data} me={me} />}
+          {route === 'c4-play' && <C4Live id={ctx} data={data} go={go} me={me} />}
+          {route === 'fly' && <FlyHome go={go} me={me} />}
+          {route === 'fly-play' && <FlyLive id={ctx} go={go} me={me} />}
+          {route === 'fly-local' && <FlyLocal go={go} data={data} />}
           {route === 'gomoku-local' && <GomokuLocal data={data} go={go} />}
           </motion.div>
           </AnimatePresence>
@@ -258,7 +288,8 @@ function Av({ rec, size = 34, fb }: any) {
 }
 
 const TabBtn = ({ n, on, go }: any) => (
-  <motion.button {...tapSmall} className={on ? 'on' : ''} onClick={() => go(n.k)}>
+  <motion.button {...tapSmall} className={on ? 'on' : ''} onClick={() => go(n.k)} style={{ position: 'relative' }}>
+    {on && <motion.span layoutId="dpill" className="dpill" transition={{ type: 'spring', stiffness: 480, damping: 34 }} />}
     <span className="ic">{on
       ? <motion.span initial={{ scale: 0.55, y: 3 }} animate={{ scale: 1, y: 0 }} transition={spring.bouncy} style={{ display: 'block' }}><Ic v={n.ic} /></motion.span>
       : <Ic v={n.ic} />}</span>{n.t}
@@ -303,6 +334,7 @@ function HomeExtra({ data, go }: any) {
 function Diary({ data, reload, onAdd, unlocked, askLock }: any) {
   const like = async (d: any) => { try { await pb.collection('diaries').update(d.id, { likes: (d.likes || 0) + 1 }); reload() } catch (e) { quiet(e) } }
   const [open, setOpen] = useState<string>('')
+  const [pop, setPop] = useState('')
   const [cmt, setCmt] = useState('')
   const lockOn = !!data.setting?.lockOn
   const send = async (d: any) => {
@@ -337,8 +369,9 @@ function Diary({ data, reload, onAdd, unlocked, askLock }: any) {
             {d.exif && <div className="mut" style={{ marginTop: 4 }}><Ic v="📷" size={12} /> {exifLine(d.exif)}</div>}
           </>}
           <div className="diafoot">
-            <motion.span {...tapSmall} style={{ display: 'inline-flex' }}><Tag size="small" color="app-red" onClick={() => like(d)} style={{ cursor: 'pointer' }}>
-              <motion.span key={d.likes} initial={{ scale: 0.4 }} animate={{ scale: 1 }} transition={spring.bouncy} style={{ display: 'inline-flex' }}><Ic v="❤️" size={12} /></motion.span>&nbsp;{d.likes || 0}</Tag></motion.span>
+            <motion.span {...tapSmall} style={{ display: 'inline-flex' }}><Tag size="small" color="app-red" onClick={() => { like(d); setPop(d.id + ':' + ((d.likes || 0) + 1)) }} style={{ cursor: 'pointer', position: 'relative' }}>
+              <motion.span key={d.likes} initial={{ scale: 0.4 }} animate={{ scale: 1 }} transition={spring.bouncy} style={{ display: 'inline-flex' }}><Ic v="❤️" size={12} /></motion.span>
+              {pop === d.id + ':' + (d.likes || 0) + 1 && <motion.i className="hb" initial={{ opacity: .95, y: 0, scale: .5 }} animate={{ opacity: 0, y: -26, scale: 1.3 }} transition={{ duration: .55, ease: 'easeOut' }}><Ic v="❤️" size={13} /></motion.i>}&nbsp;{d.likes || 0}</Tag></motion.span>
             <Tag size="small" color="app-blue" onClick={() => { setOpen(open === d.id ? '' : d.id); setCmt('') }} style={{ cursor: 'pointer' }}><Ic v="💬" size={12} />&nbsp;{cs.length}</Tag>
           </div>
           {open === d.id && (
@@ -499,28 +532,28 @@ function AlbumView({ id, data, reload, go }: any) {
           <span><Ic v="👁️" size={14} /> {a.views || 0}</span>
           <span><Ic v="🖼️" size={14} /> {ps.length}</span>
           <label className="picbtn" style={{ marginLeft: 'auto' }}><Ic v="➕" size={14} /> 加照片
-            <input type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={(e) => addMore([...(e.target.files || [])])} /></label>
+            <input type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={async (e) => addMore(await Promise.all([...(e.target.files || [])].map(compressImg)))} /></label>
           <motion.span {...tapSmall} className="delAlbum" title="删除相册" onClick={() => setAskA(true)}><Ic v="🗑️" size={16} /></motion.span>
         </div>
       </Card>
       <div className="wallfull">
         {ps.map((f, i) => (
           <div className="wf" key={f}>
-            <img src={gurl(f)} alt="" loading="lazy" onClick={() => setBig(i)} />
+            <motion.img layoutId={`gph-${i}`} src={gurl(f)} alt="" loading="lazy" onClick={() => setBig(i)} transition={{ type: 'spring', stiffness: 380, damping: 32 }} />
           </div>
         ))}
         {!ps.length && <Card className="blk" style={{ gridColumn: '1 / -1' }}><div className="mut" style={{ textAlign: 'center', padding: 18 }}>这本还空着，点上方「加照片」</div></Card>}
       </div>
-      {big >= 0 && ps[big] && <div className="lightbox" onClick={() => setBig(-1)}>
-        <img src={gurl(ps[big])} alt="" onClick={(e) => e.stopPropagation()} />
+      <AnimatePresence>{big >= 0 && ps[big] && <motion.div className="lightbox" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2, ease: 'easeOut' }} onClick={() => setBig(-1)}>
+        <motion.img layoutId={`gph-${big}`} src={gurl(ps[big])} alt="" onClick={(e) => e.stopPropagation()} />
         <div className="lbbar" onClick={(e) => e.stopPropagation()}>
           <button onClick={() => setBig((big + ps.length - 1) % ps.length)}>‹</button>
           <span className="mut">{big + 1}/{ps.length}{(() => { const e2 = exOf(ps[big]); return e2 ? ' · ' + exifLine(JSON.stringify(e2)) : '' })()}</span>
           <button onClick={() => setAsk(ps[big])}><Ic v="🗑️" size={16} /></button>
           <button onClick={() => setBig((big + 1) % ps.length)}>›</button>
-          <button onClick={() => setBig(-1)}>✕</button>
+          <button className="lbx" onClick={() => setBig(-1)}><Ic v="close" size={20} /></button>
         </div>
-      </div>}
+      </motion.div>}</AnimatePresence>
       <Modal open={askA} onClose={() => setAskA(false)} typewriter={false} title="删除整个相册？"
         footer={<div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
           <Button type="ghost" onClick={() => setAskA(false)}>取消</Button>
@@ -550,7 +583,7 @@ function Wishes({ data, reload, onAdd }: any) {
           <span className="grow bar"><i style={{ transform: `scaleX(${pct / 100})` }} /></span>
           <b className="cnt">{done}/{data.wishes.length}</b>
         </div>
-        <div style={{ marginTop: 10 }}><Button type="primary" size="small" onClick={onAdd}>✚ 添加约定</Button></div>
+        <div style={{ marginTop: 10 }}><Button type="primary" size="small" onClick={onAdd}><Ic v="➕" size={14} /> 添加约定</Button></div>
       </Card>
       <Card color="warm-peach-pink" className="blk">
         {data.wishes.map((w: any) => (
@@ -569,7 +602,7 @@ function Wishes({ data, reload, onAdd }: any) {
 function Moments({ data, reload, onAdd }: any) {
   return (
     <>
-      <div className="pbar"><Button type="primary" onClick={onAdd}>✚ 添加日子</Button><span className="mut">{data.moments.length} 个纪念日</span></div>
+      <div className="pbar"><Button type="primary" onClick={onAdd}><Ic v="➕" size={14} /> 添加日子</Button><span className="mut">{data.moments.length} 个纪念日</span></div>
       {data.moments.map((m: any) => {
         const n = m.lunar && m.lunarMD ? nextOccurLunar(m.lunarMD, m.yearly) : nextOccur(m.day, m.yearly)
         return (
@@ -592,7 +625,7 @@ function Checkin({ data, reload, me, onAdd }: any) {
   const did = (pid: string) => data.ckrecords.some((r: any) => r.plan === pid && r.who === me)
   return (
     <>
-      <div className="pbar"><Button type="primary" onClick={onAdd}>✚ 新计划</Button><span className="mut">今天 · {today()}</span></div>
+      <div className="pbar"><Button type="primary" onClick={onAdd}><Ic v="➕" size={14} /> 新计划</Button><span className="mut">今天 · {today()}</span></div>
       <Card color="app-blue" className="blk">
         {data.checkins.map((c: any) => {
           const on = did(c.id)
@@ -790,7 +823,8 @@ function More({ data, onOut, setModal, me, go, night, setNight, theme, setTheme 
       </Card>
       <Card color="app-yellow" className="blk"><Title size="small" variant="tab">设置</Title>
         {line('🏷️', '站点名称', data.setting?.siteName || '情侣小站', () => setModal('sitename'))}
-        {line('palette', '配色主题', theme === 'forest' ? '动森森绿' : '玫瑰奶油', () => setTheme(theme === 'forest' ? 'rose' : 'forest'))}
+{line('layout', '功能卡片', '排列首页宫格 · 添加链接', () => go('tilemgr'))}
+        {line('palette', '配色主题', theme === 'island' ? '官方原版' : '玫瑰奶油', () => setTheme(theme === 'island' ? 'rose' : 'island'))}
         {line('🌙', '深色模式', night ? '已开启' : '已关闭', () => setNight((x: boolean) => !x))}
         {line('🔐', '私密口令', data.setting?.lockOn ? '已启用' : '未启用', () => setModal('lockSet'))}
         {line('💾', '数据备份', '', () => go('backup'))}
@@ -822,7 +856,13 @@ function ModalCard({ kind, data, me, close, reload, go, setUnlocked }: any) {
 
   const save = async (fn: () => Promise<any>) => {
     setBusy(true)
-    try { await fn(); await reload(); close() } catch (e: any) { alert(String(e?.message || e)) }
+    try { await fn(); await reload(); close() } catch (e: any) {
+      const inner: any = e?.data?.data || e?.data || {}
+      const det = Object.entries(inner)
+        .map(([k, v]: any) => (v && typeof v === 'object' ? (v.message || JSON.stringify(v)) : String(v)))
+        .filter((x: string) => x && !/failed to create|failed to update/i.test(x)).join('；')
+      showToast(det ? `没存上：${det.slice(0, 60)}` : `没存上：${String(e?.message || e).slice(0, 40)}`)
+    }
     setBusy(false)
   }
   const TITLE: any = { notice: '通知', days: '恋爱天数', diary: '写日常', album: '新建相册', wish: '添加约定', moment: '添加日子', checkin: '新打卡计划', profile: '我的资料', sitename: '站点名称', about: '关于我们', search: '搜索小站', games: '小游戏', gomoku: '五子棋', 'gomoku-play': '五子棋 · 对局', 'gomoku-local': '五子棋 · 同屏', 'album-view': '相册', lockIn: '解锁私密内容', lockSet: '私密口令' }
@@ -908,7 +948,7 @@ function ModalCard({ kind, data, me, close, reload, go, setUnlocked }: any) {
           <span style={{ fontSize: 14 }}>🔒 仅自己可见</span>
           <span className="grow" />
           <label className="picbtn"><Ic v="📎" size={13} /> 附图
-            <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => setF({ ...f, photo: e.target.files?.[0] || null })} /></label>
+            <input type="file" accept="image/*" style={{ display: 'none' }} onChange={async (e) => { const f0 = e.target.files?.[0]; setF({ ...f, photo: f0 ? await compressImg(f0) : null }) }} /></label>
         </div>
         {f.photo && <div className="mut" style={{ margin: '4px 0' }}>已选：{f.photo.name}</div>}
         <div style={{ textAlign: 'center', marginTop: 12 }}>
@@ -923,7 +963,7 @@ function ModalCard({ kind, data, me, close, reload, go, setUnlocked }: any) {
         <Input placeholder="相册名，比如：第一次旅行" value={f.name || ''} onChange={(e: any) => setF({ ...f, name: e.target.value })} />
         <textarea className="ta" placeholder="写两句此刻的心情…（可选）" value={f.note || ''} onChange={(e: any) => setF({ ...f, note: e.target.value })} style={{ minHeight: 46 }} />
         <label className="picbtn" style={{ display: 'inline-block', marginTop: 6 }}>选择照片（可多选）
-          <input type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={(e) => setF({ ...f, files: [...(e.target.files || [])] })} /></label>
+          <input type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={async (e) => setF({ ...f, files: await Promise.all([...(e.target.files || [])].map(compressImg)) })} /></label>
         <div className="mut" style={{ margin: '8px 0 0' }}>{f.files?.length ? `已选 ${f.files.length} 张` : '也可以建好后再加图'}</div>
         <div style={{ textAlign: 'center', marginTop: 12 }}>
           <Button type="primary" block loading={busy} disabled={!(f.name || '').trim()} onClick={() => save(async () => {
@@ -988,12 +1028,13 @@ function ModalCard({ kind, data, me, close, reload, go, setUnlocked }: any) {
               <input type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }} onChange={async (e) => {
                 const fl = [...(e.target.files || [])]
                 if (!fl.length) return
+                fl[0] = await compressImg(fl[0])
                 setF({ ...f, avBusy: true })
                 try {
                   const rec = await pb.collection('members').update(pb.authStore.record!.id, { avatar: fl[0] })
                   try { pb.authStore.save(pb.authStore.token, rec) } catch { /* 本地缓存刷新失败不影响上传结果 */ }
                   setF({ ...f, avBusy: false, avDone: true }); reload()
-                } catch (err: any) { setF({ ...f, avBusy: false }); alert('上传失败: ' + (err?.message || err)) }
+                } catch (err: any) { setF({ ...f, avBusy: false }); showToast('头像没传上：' + String(err?.message || err).slice(0, 40)) }
               }} />
             </label>
           </div>
@@ -1003,8 +1044,26 @@ function ModalCard({ kind, data, me, close, reload, go, setUnlocked }: any) {
         <div className="chips" style={{ marginTop: 6 }}>
           {['男', '女'].map((g) => <Tag key={g} color={f.gender === g ? 'app-pink' : 'app-teal'} onClick={() => setF({ ...f, gender: g })} style={{ cursor: 'pointer' }}>{g}</Tag>)}
         </div>
+        <div className="aivz" />
+        <Input type="password" placeholder="当前密令（修改密令时必填）" value={f.pw0 || ''} onChange={(e: any) => setF({ ...f, pw0: e.target.value })} />
+        <div style={{ height: 6 }} />
+        <Input type="password" placeholder="新密令（不限字数，留空则不修改）" value={f.p1 || ''} onChange={(e: any) => setF({ ...f, p1: e.target.value })} />
+        <div style={{ height: 6 }} />
+        <Input type="password" placeholder="再输一次新密令" value={f.p2 || ''} onChange={(e: any) => setF({ ...f, p2: e.target.value })} />
         <div style={{ textAlign: 'center', marginTop: 12 }}>
-          <Button type="primary" block loading={busy} onClick={() => save(() => pb.collection('members').update(pb.authStore.record!.id, { nickName: f.nickName, gender: f.gender }))}>保 存</Button>
+          <Button type="primary" block loading={busy} onClick={() => {
+            const body: any = { nickName: f.nickName, gender: f.gender }
+            if ((f.p1 || '').length) {
+              if (!(f.pw0 || '').length) { showToast('改密令要先输当前密令'); return }
+              if (f.p1 !== f.p2) { showToast('两次密令不一样，检查一下'); return }
+              body.oldPassword = f.pw0; body.password = f.p1; body.passwordConfirm = f.p2
+            }
+            save(async () => {
+              const rec = await pb.collection('members').update(pb.authStore.record!.id, body)
+              try { if (body.password) pb.authStore.save(pb.authStore.token, rec) } catch { /* 本地缓存刷新失败不影响改密结果 */ }
+              if (body.password) { setF({ ...f, pw0: '', p1: '', p2: '' }); showToast('密令已更新') }
+            })
+          }}>保 存</Button>
         </div>
       </>}
       {kind === 'sitename' && <>
@@ -1026,11 +1085,16 @@ function ModalCard({ kind, data, me, close, reload, go, setUnlocked }: any) {
         <div style={{ marginTop: 10 }}><div className="mdate-span">我们的故事</div>
           <textarea className="ta" value={f.story || ''} onChange={(e) => setF({ ...f, story: e.target.value })} /></div>
         <div style={{ textAlign: 'center', marginTop: 12 }}>
-          <Button type="primary" block loading={busy} onClick={() => save(async () => {
-            const s = data.setting
-            if (s) await pb.collection('settings').update(s.id, f)
-            else await pb.collection('settings').create(f)
-          })}>保 存</Button>
+          <Button type="primary" block loading={busy} onClick={() => {
+            const body: any = { ...f }
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(body.startDate || '')) body.startDate = dayStr(data.setting?.startDate || '')
+            if (!body.startDate) { showToast('请先选择在一起的日子'); return }
+            save(async () => {
+              const s = data.setting
+              if (s) await pb.collection('settings').update(s.id, body)
+              else await pb.collection('settings').create(body)
+            })
+          }}>保 存</Button>
         </div>
       </>}
     </Modal>

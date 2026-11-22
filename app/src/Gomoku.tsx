@@ -6,7 +6,6 @@ import { motion } from 'motion/react'
 import { tapSmall, spring } from './motion'
 import { Ic } from './Icons'
 import { pb, quiet, showToast } from './core'
-
 const GN = 15
 const CONF = ['#ff9ec4', '#ffd76e', '#9ad9a0', '#9ecbff', '#d1b3ff']
 const HIST_KEY = 'gomoku_hist'
@@ -16,8 +15,10 @@ const pushHist = (rec: any) => { localStorage.setItem(HIST_KEY, JSON.stringify([
 function Games({ go }: any) {
   const rows = [
     { ic: 'gomoku', t: '五子棋', s: '跨设备联机 · 实时对战 · 同屏模式', k: 'gomoku', on: true },
+    { ic: '🍬', t: '四子棋', s: '糖果对弈 · 跨设备联机 · 四连即胜', k: 'c4', on: true },
     { ic: '🧩', t: '记忆翻牌', s: '敬请期待', k: '', on: false },
     { ic: '🃏', t: '24 点对战', s: '敬请期待', k: '', on: false },
+    { ic: '✈️', t: '情侣飞行棋', s: '掷骰走格 · 情侣任务 · 联机+同屏', k: 'fly', on: true },
   ]
   return (
     <Card color="app-teal" className="blk"><Title size="small" variant="tab">游戏厅</Title>
@@ -36,6 +37,7 @@ function GomokuHome({ go, data, me }: any) {
   const [games, setGames] = useState<any[]>([])
   const [hist, setHist] = useState<any[]>([])
   const [jc, setJc] = useState('')
+  const [recOpen, setRecOpen] = useState(false)
   const myName = me?.nickName || me?.username || '我'
   const load = () => {
     pb.collection('gmk').getFullList({ sort: '-created', filter: "winner = ''" }).then(setGames).catch(quiet)
@@ -80,13 +82,14 @@ function GomokuHome({ go, data, me }: any) {
     } catch (e) { quiet(e) }
   }
   const isToday = (t: number) => new Date(t).toDateString() === new Date().toDateString()
+  const isMine = (x: any) => (x.bid || x.wid) ? (x.bid === me.id || x.wid === me.id) : (x.bn === myName || x.wn === myName)
   const rate = (arr: any[]) => {
     const played = arr.filter((x) => x.winner !== 'draw').length
-    const won = arr.filter((x) => (x.winner === 'black' ? x.bn : x.wn) === myName).length
+    const won = arr.filter((x) => x.winner !== 'draw' && (x.winner === 'black' ? x.bid === me.id || (!x.bid && x.bn === myName) : x.wid === me.id || (!x.wid && x.wn === myName))).length
     return played ? Math.round((won / played) * 100) : null
   }
   const td = hist.filter((x) => isToday(new Date(x.created).getTime()))
-  const mine2 = hist.filter((x) => x.bn === myName || x.wn === myName)
+  const mine2 = hist.filter(isMine)
   const td2 = td.filter((x) => x.bn === myName || x.wn === myName)
   const wr = (label: string, arr: any[]) => <div className="wr"><span className="wn">{label}</span>
     <b className="wB">{rate(arr) === null ? '—' : rate(arr) + '%'}</b><span className="mut">{arr.length} 局</span></div>
@@ -123,13 +126,14 @@ function GomokuHome({ go, data, me }: any) {
         <div className="mut" style={{ fontSize: 12, marginTop: 4 }}>{mine2.length ? `以「${myName}」名义合计 ${mine2.length} 局` : '还没有战绩，开一局吧'}</div>
       </Card>
       <Card className="blk"><Title size="small" variant="tab">对局记录</Title>
-        {hist.slice(0, 8).map((x) => (
+        {(recOpen ? hist : hist.slice(0, 3)).map((x) => (
           <div key={x.id} className="li" style={{ padding: '8px 2px' }}>
             <span className="dot"><Ic v={x.winner === 'draw' ? '🤝' : x.winner === 'black' ? '⚫' : '⚪'} size={15} /></span>
             <span className="grow"><b>{x.winner === 'draw' ? '平局' : (x.winner === 'black' ? x.bn : x.wn) + ' 胜'}</b>
               <div className="mut">{new Date(x.created).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · {x.mv || '—'} 手 · {x.dur ? Math.max(1, Math.round(x.dur / 60)) + ' 分钟' : '—'} · {x.bn} vs {x.wn}</div></span>
           </div>))}
         {!hist.length && <div className="mut" style={{ padding: '6px 2px' }}>暂无记录</div>}
+        {hist.length > 3 && <Button size="small" type="ghost" block style={{ marginTop: 6 }} onClick={() => setRecOpen(!recOpen)}>{recOpen ? '收起 ▲' : `查看全部 ${hist.length} 局 ▼`}</Button>}
       </Card>
     </>
   )
@@ -144,11 +148,10 @@ const boardOf = (mv: string) => { const b = Array(GN * GN).fill(0)
   return b }
 const mvTxt = (arr: Mv[]) => arr.map((m) => `${m.i}:${m.c}`).join(',')
 const newCode = () => String(1000 + Math.floor(Math.random() * 9000))
-
 function GomokuLive({ id, data, go, me }: any) {
   const [g, setG] = useState<any>(null)
   const [, setNow] = useState(0)
-  const recorded = useRef(false)
+  const recorded = useRef('')
   const [fxOn, setFxOn] = useState(false)
   useEffect(() => { let alive = true
     const refetch = () => { pb.collection('gmk').getOne(id).then((r) => { if (alive) setG(r) }).catch(() => {}) }
@@ -176,12 +179,15 @@ function GomokuLive({ id, data, go, me }: any) {
     return () => clearTimeout(t)
   }, [g?.winner, g?.moves])
   const myName = me?.nickName || me?.username || '我'
-  useEffect(() => { if (!g || !g.winner || recorded.current) return
-    recorded.current = true
-    pb.collection('gmkr').getFullList({ filter: `game="${g.id}"` }).then((l) => { if (!l.length)
-      pb.collection('gmkr').create({ game: g.id, winner: g.winner, bn: g.bnm, wn: g.wnm,
+  useEffect(() => { if (!g || !g.winner) return
+    const gk = `${g.id}#${g.round || 1}`
+    if (recorded.current === gk) return
+    recorded.current = gk
+    pb.collection('gmkr').getFullList({ filter: `game="${gk}"` }).then((l) => { if (!l.length)
+      pb.collection('gmkr').create({ game: gk, winner: g.winner, bn: g.bnm, wn: g.wnm, bId: g.black, wId: g.white,
         mv: parseMv(g.moves || '').length, dur: g.dur || 0 }).catch(quiet)
-    }).catch(quiet)
+    }).then(() => pb.collection('gmkr').getFullList({ sort: '-created', filter: 'id != ""' }))
+      .then((all) => { all.slice(100).forEach((x: any) => pb.collection('gmkr').delete(x.id).catch(() => {})) }).catch(quiet)
   }, [g?.winner])
   const patch = async (body: any) => { try {
     const r = await fetch(`/api/collections/gmk/records/${g.id}`, { method: 'PATCH',
@@ -231,7 +237,7 @@ function GomokuLive({ id, data, go, me }: any) {
     if (g.prop === 'undo') undo()
     else patch({ winner: 'draw', state: 'done', prop: '', propBy: '', dur: Math.round((Date.now() - (g.start || Date.now())) / 1000) }) }
   const resign = () => patch({ winner: seat === 'black' ? 'white' : 'black', state: 'done', dur: Math.round((Date.now() - (g.start || Date.now())) / 1000) })
-  const rematch = () => patch({ moves: '', winner: '', state: 'live', prop: '', propBy: '', start: Date.now(), dur: 0 })
+  const rematch = () => patch({ moves: '', winner: '', state: 'live', prop: '', propBy: '', start: Date.now(), dur: 0, round: (g.round || 1) + 1 })
   const swap = () => patch({ black: g.white, white: g.black, bnm: g.wnm, wnm: g.bnm })
   const takeSeat = (want: string) => patch(want === 'black'
     ? { black: me.id, bnm: myName, white: '', wnm: '', bSeen: Date.now(), state: 'lobby' }
@@ -318,9 +324,7 @@ function GomokuLive({ id, data, go, me }: any) {
   )
 }
 
-function GomokuLocal({ data, go }: any) {
-
-  const load = (): any => { try { const v = JSON.parse(localStorage.getItem('gomoku') || ''); return Array.isArray(v?.b) && v.b.length === GN * GN ? v : null } catch { return null } }
+function GomokuLocal({ data, go }: any) {  const load = (): any => { try { const v = JSON.parse(localStorage.getItem('gomoku') || ''); return Array.isArray(v?.b) && v.b.length === GN * GN ? v : null } catch { return null } }
   const fresh = () => ({ b: Array(GN * GN).fill(0), turn: 1, win: 0, hist: [] as number[], start: Date.now() })
   const [g, setG] = useState<any>(load() || fresh())
   const names = [data?.setting?.boyName || '男孩', data?.setting?.girlName || '女孩']
@@ -348,6 +352,9 @@ function GomokuLocal({ data, go }: any) {
     if (wl) rec = { t: Date.now(), w: g.turn, mv: h.length, dur: Math.round((Date.now() - (g.start || Date.now())) / 1000) }
     else if (full) rec = { t: Date.now(), w: 3, mv: h.length, dur: Math.round((Date.now() - (g.start || Date.now())) / 1000) }
     if (rec) pushHist(rec)
+    if (rec) { const gk = 'local-' + Date.now().toString(36)
+      pb.collection('gmkr').create({ game: gk, winner: rec.w === 3 ? 'draw' : rec.w === 1 ? 'black' : 'white',
+        bn: names[0], wn: names[1], mv: rec.mv, dur: rec.dur }).catch(() => {}) }
     if (rec && navigator.vibrate) navigator.vibrate(rec.w === 3 ? [40, 60, 40] : [30, 40, 80])
     save({ ...g, b, hist: h, turn: g.turn === 1 ? 2 : 1, win: wl ? g.turn : full ? 3 : 0 })
   }
@@ -387,6 +394,4 @@ function GomokuLocal({ data, go }: any) {
     </>
   )
 }
-
-
 export { Games, GomokuHome, GomokuLive, GomokuLocal }
