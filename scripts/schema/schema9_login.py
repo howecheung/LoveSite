@@ -1,6 +1,5 @@
-import json, re, urllib.request
+import json, re, urllib.request, os
 W = os.environ.get("PBSITE_DIR", ".")
-import os
 txt = os.environ.get("PB_CREDENTIALS", "")  # 超管邮箱与口令两行，自行注入
 em = re.search(r"超管 (\S+)", txt).group(1); pw = re.search(r"超管 \S+\s+(\S+)", txt).group(1)
 TOK = None

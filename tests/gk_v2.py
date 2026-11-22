@@ -1,5 +1,5 @@
 """gk_v2: 每步 dump，串行推进"""
-import asyncio, json, base64, urllib.request, websockets
+import asyncio, json, base64, urllib.request, websockets, os
 B = "http://127.0.0.1:9333"
 OUT = os.environ.get("PB_OUT_DIR", ".")
 

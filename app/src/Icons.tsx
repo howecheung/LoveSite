@@ -1,4 +1,3 @@
-import React from 'react'
 import {
   ArrowClockwise,
   ArrowLeft,
@@ -43,7 +42,6 @@ import {
   Smiley,
   SmileyMeh,
   SmileySad,
-  SmileyWink,
   Sun,
   Sunglasses,
   TShirt,

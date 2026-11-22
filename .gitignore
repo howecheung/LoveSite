@@ -2,6 +2,9 @@ node_modules/
 dist/
 pb_data/
 pb_public/
+.pb/
+_dl-pb.cjs
+_init-pb.cjs
 pb.log
 CREDENTIALS.txt
 *.env

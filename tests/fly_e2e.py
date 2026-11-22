@@ -2,7 +2,6 @@
 import asyncio, json, os, urllib.request, websockets, base64
 # 联调测试需环境变量：BASE(站点默认 http://127.0.0.1:8094)、E2E_BOY/E2E_GIRL/E2E_PW、
 # PB_ADMIN/PB_ADMIN_PW(清理用)、CDP/CDP2(测试浏览器调试口)
-import os
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SHOTS = os.path.join(ROOT, "shots")
 BOY = os.environ.get("E2E_BOY", "boy"); GIRL = os.environ.get("E2E_GIRL", "girl"); E2E_PW = os.environ.get("E2E_PW", "")

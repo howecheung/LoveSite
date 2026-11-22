@@ -1,9 +1,9 @@
 // 五子棋：大厅（单棋室+房号）、联机对局（带色棋谱、悔棋退一手、续战）、同屏离线模式
 // 与主站解耦：数据走 PocketBase gmk/gmkr 集合，实时靠 SDK subscribe + 心跳 bSeen/wSeen
-import React, { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Card, Title, Button, Tag } from 'animal-island-ui'
 import { motion } from 'motion/react'
-import { tapSmall, spring } from './motion'
+import { tapSmall } from './motion'
 import { Ic } from './Icons'
 import { pb, quiet, showToast } from './core'
 const GN = 15
@@ -33,12 +33,14 @@ function Games({ go }: any) {
   )
 }
 
-function GomokuHome({ go, data, me }: any) {
+function GomokuHome({ go, me }: any) {
   const [games, setGames] = useState<any[]>([])
   const [hist, setHist] = useState<any[]>([])
   const [jc, setJc] = useState('')
   const [recOpen, setRecOpen] = useState(false)
   const myName = me?.nickName || me?.username || '我'
+  const pushHistLocal = (rs: any[]) => { try { localStorage.setItem(HIST_KEY, JSON.stringify(rs.map((r) => ({
+    t: new Date(r.created).getTime(), w: r.winner === 'draw' ? 3 : (r.winner === 'black' ? 1 : 2), mv: r.mv, dur: r.dur, bn: r.bn, wn: r.wn })))) } catch { /* ignore */ } }
   const load = () => {
     pb.collection('gmk').getFullList({ sort: '-created', filter: "winner = ''" }).then(setGames).catch(quiet)
     pb.collection('gmkr').getFullList({ sort: '-created', filter: "winner != ''" }).then((rs) => { setHist(rs); pushHistLocal(rs) }).catch(quiet)
@@ -47,8 +49,6 @@ function GomokuHome({ go, data, me }: any) {
     pb.collection('gmk').subscribe('*', () => load()).catch(quiet)
     return () => { pb.collection('gmk').unsubscribe('*').catch(() => {}) }
   }, [])
-  const pushHistLocal = (rs: any[]) => { try { localStorage.setItem(HIST_KEY, JSON.stringify(rs.map((r) => ({
-    t: new Date(r.created).getTime(), w: r.winner === 'draw' ? 3 : (r.winner === 'black' ? 1 : 2), mv: r.mv, dur: r.dur, bn: r.bn, wn: r.wn })))) } catch { /* ignore */ } }
   const live = games.filter((x) => x.winner === '')
   const mine = live.find((x) => x.black === me.id || x.white === me.id)
   const joinable = live.filter((x) => x.black !== me.id && x.white !== me.id && (!x.black || !x.white))
@@ -60,6 +60,13 @@ function GomokuHome({ go, data, me }: any) {
     const empty = openG.find((x) => !x.black || !x.white)
     if (empty) return join(empty)
     const r = await pb.collection('gmk').create({ black: me.id, bnm: myName, moves: '', state: 'lobby', winner: '', prop: '', propBy: '', bSeen: Date.now(), wSeen: 0, code: newCode() })
+    // 双端同时点开局会各建一局：再查一次，保留最早的空位局，自己多建的那局删掉并入
+    const again: any[] = await pb.collection('gmk').getFullList({ sort: 'created', filter: "winner = ''" }).catch(() => [])
+    const first = again[0]
+    if (first && first.id !== r.id && (!first.black || !first.white)) {
+      await pb.collection('gmk').delete(r.id).catch(() => {})
+      return join(first)
+    }
     go('gomoku-play', r.id, true)
   } catch (e) { quiet(e) } }
   const join = async (gm: any) => { try {
@@ -118,7 +125,7 @@ function GomokuHome({ go, data, me }: any) {
             value={jc} onChange={(e: any) => setJc(e.target.value)} />
           <Button size="small" type="primary" onClick={joinByCode}>加入</Button>
         </div>
-        <div style={{ marginTop: 12 }}><Button size="small" type="ghost" onClick={() => { localStorage.removeItem('gomoku'); go('gomoku-local') }}>同屏一人执一子（离线模式）</Button></div>
+        <div style={{ marginTop: 12 }}><Button size="small" ghost onClick={() => { localStorage.removeItem('gomoku'); go('gomoku-local') }}>同屏一人执一子（离线模式）</Button></div>
       </Card>
       <Card className="blk"><Title size="small" variant="tab">胜率</Title>
         {wr('今日', td2)}
@@ -133,7 +140,7 @@ function GomokuHome({ go, data, me }: any) {
               <div className="mut">{new Date(x.created).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · {x.mv || '—'} 手 · {x.dur ? Math.max(1, Math.round(x.dur / 60)) + ' 分钟' : '—'} · {x.bn} vs {x.wn}</div></span>
           </div>))}
         {!hist.length && <div className="mut" style={{ padding: '6px 2px' }}>暂无记录</div>}
-        {hist.length > 3 && <Button size="small" type="ghost" block style={{ marginTop: 6 }} onClick={() => setRecOpen(!recOpen)}>{recOpen ? '收起 ▲' : `查看全部 ${hist.length} 局 ▼`}</Button>}
+        {hist.length > 3 && <Button size="small" ghost block style={{ marginTop: 6 }} onClick={() => setRecOpen(!recOpen)}>{recOpen ? '收起 ▲' : `查看全部 ${hist.length} 局 ▼`}</Button>}
       </Card>
     </>
   )
@@ -148,7 +155,7 @@ const boardOf = (mv: string) => { const b = Array(GN * GN).fill(0)
   return b }
 const mvTxt = (arr: Mv[]) => arr.map((m) => `${m.i}:${m.c}`).join(',')
 const newCode = () => String(1000 + Math.floor(Math.random() * 9000))
-function GomokuLive({ id, data, go, me }: any) {
+function GomokuLive({ id, go, me }: any) {
   const [g, setG] = useState<any>(null)
   const [, setNow] = useState(0)
   const recorded = useRef('')
@@ -186,14 +193,14 @@ function GomokuLive({ id, data, go, me }: any) {
     pb.collection('gmkr').getFullList({ filter: `game="${gk}"` }).then((l) => { if (!l.length)
       pb.collection('gmkr').create({ game: gk, winner: g.winner, bn: g.bnm, wn: g.wnm, bId: g.black, wId: g.white,
         mv: parseMv(g.moves || '').length, dur: g.dur || 0 }).catch(quiet)
-    }).then(() => pb.collection('gmkr').getFullList({ sort: '-created', filter: 'id != ""' }))
-      .then((all) => { all.slice(100).forEach((x: any) => pb.collection('gmkr').delete(x.id).catch(() => {})) }).catch(quiet)
+    }).then(() => pb.collection('gmkr').getList(1, 200, { sort: '-created', fields: 'id' }))
+      .then((pg) => { pg.items.slice(100).forEach((x: any) => pb.collection('gmkr').delete(x.id).catch(() => {})) }).catch(quiet)
   }, [g?.winner])
   const patch = async (body: any) => { try {
     const r = await fetch(`/api/collections/gmk/records/${g.id}`, { method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Authorization: pb.authStore.token as string, 'If-Match': g.updated },
       body: JSON.stringify(body) })
-    if (r.status === 412) { console.warn('stale, resync by realtime'); return }
+    if (r.status === 412) { const cur = await pb.collection('gmk').getOne(g.id).catch(() => null); if (cur) setG(cur); return }
     if (!r.ok) throw new Error('HTTP ' + r.status)
   } catch (e) { quiet(e) } }
   const winAt = (bd: number[], i: number) => { const r0 = Math.floor(i / GN), c0 = i % GN, who = bd[i]
@@ -238,7 +245,7 @@ function GomokuLive({ id, data, go, me }: any) {
     else patch({ winner: 'draw', state: 'done', prop: '', propBy: '', dur: Math.round((Date.now() - (g.start || Date.now())) / 1000) }) }
   const resign = () => patch({ winner: seat === 'black' ? 'white' : 'black', state: 'done', dur: Math.round((Date.now() - (g.start || Date.now())) / 1000) })
   const rematch = () => patch({ moves: '', winner: '', state: 'live', prop: '', propBy: '', start: Date.now(), dur: 0, round: (g.round || 1) + 1 })
-  const swap = () => patch({ black: g.white, white: g.black, bnm: g.wnm, wnm: g.bnm })
+  const swap = () => patch({ black: g.white, white: g.black, bnm: g.wnm, wnm: g.bnm, moves: '', winner: '', state: 'live', prop: '', propBy: '', start: Date.now(), dur: 0 })
   const takeSeat = (want: string) => patch(want === 'black'
     ? { black: me.id, bnm: myName, white: '', wnm: '', bSeen: Date.now(), state: 'lobby' }
     : { white: me.id, wnm: myName, black: '', bnm: '', wSeen: Date.now(), state: 'lobby' })
@@ -277,8 +284,8 @@ function GomokuLive({ id, data, go, me }: any) {
             <div className="pulse" style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent-ink)', margin: '6px 0 10px' }}>⏳ {g.code ? g.code + ' 号房等待加入' : '等待对方加入'} · TA 可在大厅点这局或输入房号</div>
             <div className="mut" style={{ marginBottom: 10 }}>你已占座，开局前还能换：</div>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-              <Button size="small" type={seat === 'black' ? 'primary' : 'ghost'} onClick={() => takeSeat('black')}>执黑 · 先</Button>
-              <Button size="small" type={seat === 'white' ? 'primary' : 'ghost'} onClick={() => takeSeat('white')}>执白 · 后</Button>
+              <Button size="small" type="primary" ghost={seat !== 'black'} onClick={() => takeSeat('black')}>执黑 · 先</Button>
+              <Button size="small" type="primary" ghost={seat !== 'white'} onClick={() => takeSeat('white')}>执白 · 后</Button>
             </div></>}
         </div>)}
       <div className={'goban' + (winCells ? ' winning' : '')}><div className="gwrap"><div className="ggrid">
@@ -300,23 +307,23 @@ function GomokuLive({ id, data, go, me }: any) {
       {!!g.prop && g.propBy && g.propBy !== seat && !g.winner && seat !== 'watch' &&
         <div className="propbar"><span className="grow">{(g.propBy === 'black' ? g.bnm : g.wnm)} 请求{g.prop === 'undo' ? '悔棋' : '和棋'}</span>
           <Button size="small" type="primary" onClick={() => answer(true)}>同意</Button>
-          <Button size="small" type="ghost" onClick={() => answer(false)}>拒绝</Button></div>}
+          <Button size="small" ghost onClick={() => answer(false)}>拒绝</Button></div>}
       {!!g.prop && g.propBy === seat && !g.winner &&
         <div className="propbar"><span className="grow">已发出{g.prop === 'undo' ? '悔棋' : '和棋'}请求，等待对方回应…</span>
-          <Button size="small" type="ghost" onClick={() => patch({ prop: '', propBy: '' })}>取消</Button></div>}
+          <Button size="small" ghost onClick={() => patch({ prop: '', propBy: '' })}>取消</Button></div>}
       <div className="gfoot">
         {g.winner ? <>
           <span style={{ display: 'flex', gap: 6 }}>
             <Button size="small" type="primary" onClick={rematch}>再来一局</Button>
-            <Button size="small" type="ghost" onClick={swap}>换色</Button></span>
+            <Button size="small" ghost onClick={swap}>换色</Button></span>
           <span className="mut" style={{ textAlign: 'center', fontSize: 12 }}>{iWin ? <><Ic v="trophy" size={13} /> 赢啦！</> : g.winner === 'draw' ? <Ic v="handshake" size={13} /> : '差一点'} {winLineTxt}{g.dur ? ' · ' + Math.max(1, Math.round(g.dur / 60)) + ' 分钟' : ''} · {mvArr.length} 手</span>
-          <Button size="small" type="ghost" onClick={() => go('gomoku', undefined, true)}>回大厅</Button></>
+          <Button size="small" ghost onClick={() => go('gomoku', undefined, true)}>回大厅</Button></>
           : seat !== 'watch' && seat && bothIn && g.state === 'live' ? <>
-          <Button size="small" type="ghost" onClick={() => ask('undo')} disabled={mvArr.length < 2}>悔棋</Button>
+          <Button size="small" ghost onClick={() => ask('undo')} disabled={mvArr.length < 2}>悔棋</Button>
           <span className="mut" style={{ textAlign: 'center' }}>{statusTxt}</span>
           <span style={{ display: 'flex', gap: 6 }}>
-            <Button size="small" type="ghost" onClick={() => ask('draw')}>和棋</Button>
-            <Button size="small" type="ghost" onClick={resign}>认输</Button></span></>
+            <Button size="small" ghost onClick={() => ask('draw')}>和棋</Button>
+            <Button size="small" ghost onClick={resign}>认输</Button></span></>
           : <span className="mut" style={{ textAlign: 'center', flex: 1 }}>{statusTxt}</span>}
       </div>
       <div className="gmk-hint">离开也不怕 · 回来自动续战 · 两台设备连同一网络即可实时对弈</div>
@@ -384,11 +391,11 @@ function GomokuLocal({ data, go }: any) {  const load = (): any => { try { const
           ))}
         </div></div></div>
         <div className="gfoot">
-          <Button size="small" type="ghost" onClick={undo}>悔棋</Button>
+          <Button size="small" ghost onClick={undo}>悔棋</Button>
           <span className="mut">{g.win ? (g.win === 3 ? '🤝 平局！' : '🎉 ' + winnerName + ' 五连获胜！') : ((g.hist || []).length + 1) + ' 手 · 轮到 ' + (g.turn === 1 ? names[0] + '（黑）' : names[1] + '（白）')}</span>
-          <Button size="small" type={g.win ? 'primary' : 'ghost'} onClick={reset}>重开</Button>
+          <Button size="small" type="primary" ghost={!g.win} onClick={reset}>重开</Button>
         </div>
-        {!!g.win && <div style={{ textAlign: 'center', marginTop: 8 }}><Button size="small" block type="ghost" onClick={() => go('gomoku', undefined, true)}>回大厅看战绩 ›</Button></div>}
+        {!!g.win && <div style={{ textAlign: 'center', marginTop: 8 }}><Button size="small" block ghost onClick={() => go('gomoku', undefined, true)}>回大厅看战绩 ›</Button></div>}
       </Card>
       <div className="mut" style={{ textAlign: 'center', fontSize: 12, marginTop: 4 }}>点线交叉处落子 · 先连五子者胜 · 黑棋先行 · 棋局自动保存</div>
     </>

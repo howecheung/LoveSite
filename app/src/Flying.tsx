@@ -1,6 +1,6 @@
 // 情侣飞行棋：S 型 24 格 · 任务格/奖励格/陷阱格 · 40 条原创任务库（净室自写）
 // 联机走 PocketBase fly/flyr（房号底座同五子棋），另有同屏热座模式
-import React, { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Card, Button, Tag } from 'animal-island-ui'
 import { motion } from 'motion/react'
 import { tapSmall } from './motion'
@@ -37,7 +37,7 @@ function Dice({ v, rolling }: any) {
 }
 
 // ===== 共用棋盘 + 骰子 + 任务卡 =====
-function FlyBoard({ p, me0, me1, turn, canAct, rolling, dice, onRoll, task, onTaskDone, winner, seats }: any) {
+function FlyBoard({ p, me0, me1, canAct, rolling, dice, onRoll, task, onTaskDone, winner }: any) {
   return (<>
     <div className="flyboard">
       {Array.from({ length: CELLS }).map((_, i) => {
@@ -59,7 +59,7 @@ function FlyBoard({ p, me0, me1, turn, canAct, rolling, dice, onRoll, task, onTa
         <div className="ftcard">
           <div className="fttag">💞 情侣任务</div>
           <div className="fttext">{TASKS[task]}</div>
-          <Button className="okb" block onClick={onTaskDone}>完成啦 ❤</Button>
+          <Button type="primary" block onClick={onTaskDone}>完成啦 ❤</Button>
         </div>
       </div>)}
   </>)
@@ -97,6 +97,13 @@ export function FlyHome({ go, me }: any) {
     const empty = openG.find((x) => !x.black || !x.white)
     if (empty) return join(empty)
     const r = await pb.collection('fly').create({ black: me.id, bnm: myName, moves: JSON.stringify(initBd()), state: 'lobby', winner: '', prop: '', propBy: '', bSeen: Date.now(), wSeen: 0, code: newCode() })
+    // 双端同时点开局会各建一局：再查一次，保留最早的空位局，自己多建的那局删掉并入
+    const again: any[] = await pb.collection('fly').getFullList({ sort: 'created', filter: "winner = ''" }).catch(() => [])
+    const first = again[0]
+    if (first && first.id !== r.id && (!first.black || !first.white)) {
+      await pb.collection('fly').delete(r.id).catch(() => {})
+      return join(first)
+    }
     go('fly-play', r.id, true)
   } catch (e) { quiet(e) } }
   const joinByCode = async () => {
@@ -134,7 +141,7 @@ export function FlyHome({ go, me }: any) {
         <input className="in" style={{ flex: 1 }} inputMode="numeric" maxLength={4} placeholder="输入 4 位房号加入" value={jc} onChange={(e: any) => setJc(e.target.value)} />
         <Button size="small" type="primary" onClick={joinByCode}>加入</Button>
       </div>
-      <div style={{ marginTop: 12 }}><Button size="small" type="ghost" onClick={() => go('fly-local')}>两个人一台手机 · 同屏模式</Button></div>
+      <div style={{ marginTop: 12 }}><Button size="small" ghost onClick={() => go('fly-local')}>两个人一台手机 · 同屏模式</Button></div>
     </Card>
     <Card className="blk" style={{ padding: '10px 16px' }}>
       <div style={{ fontWeight: 800, color: 'var(--ink1)', padding: '8px 0 2px' }}>对局记录</div>
@@ -145,7 +152,7 @@ export function FlyHome({ go, me }: any) {
             <div className="mut">{new Date(x.created).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · {x.mv || '—'} 回合 · {x.dur ? Math.max(1, Math.round(x.dur / 60)) + ' 分钟' : '—'}</div></span>
         </div>))}
       {!hist.length && <div className="mut" style={{ padding: '6px 2px' }}>暂无记录</div>}
-      {hist.length > 3 && <Button size="small" type="ghost" block style={{ marginTop: 6 }} onClick={() => setRecOpen(!recOpen)}>{recOpen ? '收起 ▲' : `查看全部 ${hist.length} 局 ▼`}</Button>}
+      {hist.length > 3 && <Button size="small" ghost block style={{ marginTop: 6 }} onClick={() => setRecOpen(!recOpen)}>{recOpen ? '收起 ▲' : `查看全部 ${hist.length} 局 ▼`}</Button>}
     </Card>
   </>)
 }
@@ -190,17 +197,19 @@ export function FlyLive({ id, go, me }: any) {
     pb.collection('flyr').getFullList({ filter: `game="${gk}"` }).then((l) => { if (!l.length)
       pb.collection('flyr').create({ game: gk, winner: g.winner, bn: g.bnm, wn: g.wnm, bId: g.black, wId: g.white,
         mv: bd.t || 0, dur: g.dur || 0 }).catch(quiet)
-    }).then(() => pb.collection('flyr').getFullList({ sort: '-created', filter: 'id != ""' }))
-      .then((all) => { all.slice(100).forEach((x: any) => pb.collection('flyr').delete(x.id).catch(() => {})) }).catch(quiet)
+    }).then(() => pb.collection('flyr').getList(1, 200, { sort: '-created', fields: 'id' }))
+      .then((pg) => { pg.items.slice(100).forEach((x: any) => pb.collection('flyr').delete(x.id).catch(() => {})) }).catch(quiet)
   }, [g?.winner])
   const patch = async (body: any) => { try {
     const r = await fetch(`/api/collections/fly/records/${g.id}`, { method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Authorization: pb.authStore.token as string, 'If-Match': g.updated },
       body: JSON.stringify(body) })
-    if (r.status === 412) return
+    if (r.status === 412) { const cur = await pb.collection('fly').getOne(g.id).catch(() => null); if (cur) setG(cur); return }
     if (!r.ok) throw new Error('HTTP ' + r.status)
   } catch (e) { quiet(e) } }
   const bd = parseBd(g?.moves || '')
+  const bdRef = useRef<any>(bd)
+  bdRef.current = bd
   const myIdx = seat === 'white' ? 1 : 0
   const myTurn = seat !== 'watch' && bd.turn === myIdx && !g?.winner
   const oppSeatName = seat === 'black' ? g?.wnm : g?.bnm
@@ -213,7 +222,7 @@ export function FlyLive({ id, go, me }: any) {
       const v = 1 + Math.floor(Math.random() * 6)
       setDice(v); setRolling(false)
       if (navigator.vibrate) navigator.vibrate(18)
-      const nb = JSON.parse(JSON.stringify(bd))
+      const nb = JSON.parse(JSON.stringify(bdRef.current))
       nb.t = (nb.t || 0) + 1
       let skipNote = false
       if (nb.skip[nb.turn]) { nb.skip[nb.turn] = false; nb.turn = (nb.turn + 1) % 2; skipNote = true }
@@ -240,11 +249,11 @@ export function FlyLive({ id, go, me }: any) {
   const answer = (ok: boolean) => { if (!ok) { patch({ prop: '', propBy: '' }); return }
     patch({ winner: 'draw', state: 'done', prop: '', propBy: '', dur: Math.round((Date.now() - (g.start || Date.now())) / 1000) }) }
   const rematch = () => patch({ moves: JSON.stringify(initBd()), winner: '', state: 'live', prop: '', propBy: '', start: Date.now(), dur: 0, round: (g.round || 1) + 1 })
-  const swap = () => { patch({ black: g.white, white: g.black, bnm: g.wnm, wnm: g.bnm, moves: JSON.stringify({ ...bd, p: [bd.p[1], bd.p[0]], turn: (bd.turn + 1) % 2 }) }) }
+  const myName = me?.nickName || me?.username || '我'
+  const swap = () => { patch({ black: g.white, white: g.black, bnm: g.wnm, wnm: g.bnm, moves: JSON.stringify({ ...initBd(), p: [bd.p[1], bd.p[0]], turn: 0 }), winner: '', state: 'live', start: Date.now(), dur: 0 }) }
   const takeSeat = (want: string) => patch(want === 'black'
     ? { black: me.id, bnm: myName, white: '', wnm: '', bSeen: Date.now(), state: 'lobby' }
     : { white: me.id, wnm: myName, black: '', bnm: '', wSeen: Date.now(), state: 'lobby' })
-  const myName = me?.nickName || me?.username || '我'
   if (!g) return <Card className="blk gmk-box"><div className="mut-row">机场正在起飞准备…</div></Card>
   const iWin = !!g.winner && g.winner === seat
   const bothIn = g.black && g.white
@@ -273,8 +282,8 @@ export function FlyLive({ id, go, me }: any) {
             : <>
             <div className="pulse" style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent-ink)', margin: '6px 0 10px' }}>⏳ {g.code ? g.code + ' 号房等待加入' : '等待对方加入'}</div>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-              <Button size="small" type={seat === 'black' ? 'primary' : 'ghost'} onClick={() => takeSeat('black')}>🐻 熊</Button>
-              <Button size="small" type={seat === 'white' ? 'primary' : 'ghost'} onClick={() => takeSeat('white')}>🐰 兔</Button>
+              <Button size="small" type="primary" ghost={seat !== 'black'} onClick={() => takeSeat('black')}>🐻 熊</Button>
+              <Button size="small" type="primary" ghost={seat !== 'white'} onClick={() => takeSeat('white')}>🐰 兔</Button>
             </div></>}
         </div>)}
       <FlyBoard p={bd.p} me0={seat !== 'white'} me1={seat !== 'black'} turn={bd.turn} canAct={myTurn} rolling={rolling} dice={dice} onRoll={doRoll} task={bd.task} onTaskDone={doneTask} winner={g.winner} />
@@ -293,18 +302,18 @@ export function FlyLive({ id, go, me }: any) {
       {!!g.prop && g.propBy && g.propBy !== seat && !g.winner && seat !== 'watch' &&
         <div className="propbar"><span className="grow">{(g.propBy === 'black' ? g.bnm : g.wnm)} 请求和棋</span>
           <Button size="small" type="primary" onClick={() => answer(true)}>同意</Button>
-          <Button size="small" type="ghost" onClick={() => answer(false)}>拒绝</Button></div>}
+          <Button size="small" ghost onClick={() => answer(false)}>拒绝</Button></div>}
       <div className="gfoot">
         {g.winner ? <>
           <span style={{ display: 'flex', gap: 6 }}>
             <Button size="small" type="primary" onClick={rematch}>再来一局</Button>
-            <Button size="small" type="ghost" onClick={swap}>换宠</Button></span>
+            <Button size="small" ghost onClick={swap}>换宠</Button></span>
           <span className="mut" style={{ textAlign: 'center', fontSize: 11.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{iWin ? '🏆 赢啦' : g.winner === 'draw' ? '🤝 平局' : '差一点'}{g.dur ? ' · ' + Math.max(1, Math.round(g.dur / 60)) + '分' : ''}</span>
-          <Button size="small" type="ghost" onClick={() => go('fly', undefined, true)}>回大厅</Button></>
+          <Button size="small" ghost onClick={() => go('fly', undefined, true)}>回大厅</Button></>
           : seat !== 'watch' && seat && bothIn ? <>
-          <Button size="small" type="ghost" onClick={() => ask('draw')}>和棋</Button>
+          <Button size="small" ghost onClick={() => ask('draw')}>和棋</Button>
           <span className="mut" style={{ textAlign: 'center' }}>{statusTxt}</span>
-          <Button size="small" type="ghost" onClick={resign}>认输</Button></>
+          <Button size="small" ghost onClick={resign}>认输</Button></>
           : <span className="mut" style={{ textAlign: 'center', flex: 1 }}>{statusTxt}</span>}
       </div>
       <div className="gmk-hint">💞 任务格做情侣小任务 · 🎁 奖励格再掷一次 · 💤 瞌睡格停一轮</div>
@@ -366,10 +375,10 @@ export function FlyLocal({ go, data }: any) {
         {winner
           ? <><span style={{ display: 'flex', gap: 6 }}><Button size="small" type="primary" onClick={reset}>再来一局</Button></span>
             <span className="mut" style={{ textAlign: 'center' }}>{winner} 获胜</span>
-            <Button size="small" type="ghost" onClick={() => go('fly', undefined, true)}>回大厅</Button></>
+            <Button size="small" ghost onClick={() => go('fly', undefined, true)}>回大厅</Button></>
           : <><span style={{ width: 60 }} />
             <span className="mut" style={{ textAlign: 'center' }}>{bd.task >= 0 ? '完成任务后点上方按钮 ✈️' : `轮到${bd.turn ? '🐰' : '🐻'} · 点骰子`}</span>
-            <Button size="small" type="ghost" onClick={() => go('fly', undefined, true)}>退出</Button></>}
+            <Button size="small" ghost onClick={() => go('fly', undefined, true)}>退出</Button></>}
       </div>
       <div className="gmk-hint">两个人一台手机轮流点 · 适合窝在一起玩</div>
     </Card>

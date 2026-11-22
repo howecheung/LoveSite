@@ -497,3 +497,14 @@ span[class*="animal-wrapper"] > input { width: 100% !important; }
 .fttag { display: inline-block; background: var(--tile3); color: var(--accent-ink); font-weight: 800; font-size: 12.5px;
   border-radius: 999px; padding: 4px 12px; margin-bottom: 10px; }
 .fttext { font-size: 16.5px; font-weight: 800; color: var(--ink1); line-height: 1.55; margin-bottom: 14px; }
+
+/* ===== 补齐只有 className、没有样式定义的类 ===== */
+.risein { animation: riseIn .42s var(--ease) both; }
+.dleft { flex: 1; min-width: 0; }
+.in { flex: 1; min-width: 0; border: 2px solid var(--line); border-radius: 999px; padding: 7px 14px;
+  font: inherit; background: var(--surface); color: var(--ink1); }
+.in:focus { outline: 0; border-color: var(--accent-soft); }
+.r2 { display: flex; align-items: flex-end; gap: 8px; }
+.fld { display: flex; flex-direction: column; gap: 5px; }
+.fld > span { font-size: 12.5px; color: var(--ink2); letter-spacing: .5px; }
+.acts { display: flex; gap: 8px; flex-wrap: wrap; }

@@ -1,7 +1,9 @@
 // 全站共享内核：PocketBase 单例、静默错误胶囊（quiet）、主动提示（showToast）
 import PocketBase from 'pocketbase'
 
-export const pb = new PocketBase(window.location.origin, null as any, { autoCancellation: false } as any)
+export const pb = new PocketBase(window.location.origin)
+// 关掉「同 URL 并发请求自动取消」：首页一次拉 9 个集合，默认策略会互相 abort
+pb.autoCancellation(false)
 const ABORT = /abort|cancel/i
 export const quiet = (e: any) => {
   if (ABORT.test(String(e?.message || e))) return

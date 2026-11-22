@@ -1,6 +1,6 @@
 // 四子棋：7×6 重力落子 · 复用五子棋那套联机底座（房号/心跳/悔棋提案/终局特效/战绩）
 // 数据走 PocketBase c4/c4r 集合（与 gmk 同构），逻辑净室自写
-import React, { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Card, Button, Tag } from 'animal-island-ui'
 import { motion } from 'motion/react'
 import { tapSmall } from './motion'
@@ -40,7 +40,7 @@ const winAt4 = (bd: number[], i: number) => {
   return null
 }
 
-export function C4Home({ go, data, me }: any) {
+export function C4Home({ go, me }: any) {
   const [games, setGames] = useState<any[]>([])
   const [hist, setHist] = useState<any[]>([])
   const [jc, setJc] = useState('')
@@ -71,6 +71,13 @@ export function C4Home({ go, data, me }: any) {
     const empty = openG.find((x) => !x.black || !x.white)
     if (empty) return join(empty)
     const r = await pb.collection('c4').create({ black: me.id, bnm: myName, moves: '', state: 'lobby', winner: '', prop: '', propBy: '', bSeen: Date.now(), wSeen: 0, code: newCode() })
+    // 双端同时点开局会各建一局：再查一次，保留最早的空位局，自己多建的那局删掉并入
+    const again: any[] = await pb.collection('c4').getFullList({ sort: 'created', filter: "winner = ''" }).catch(() => [])
+    const first = again[0]
+    if (first && first.id !== r.id && (!first.black || !first.white)) {
+      await pb.collection('c4').delete(r.id).catch(() => {})
+      return join(first)
+    }
     go('c4-play', r.id, true)
   } catch (e) { quiet(e) } }
   const joinByCode = async () => {
@@ -131,14 +138,14 @@ export function C4Home({ go, data, me }: any) {
               <div className="mut">{new Date(x.created).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · {x.mv || '—'} 手 · {x.dur ? Math.max(1, Math.round(x.dur / 60)) + ' 分钟' : '—'} · {x.bn} vs {x.wn}</div></span>
           </div>))}
         {!hist.length && <div className="mut" style={{ padding: '6px 2px' }}>暂无记录</div>}
-        {hist.length > 3 && <Button size="small" type="ghost" block style={{ marginTop: 6 }} onClick={() => setRecOpen(!recOpen)}>{recOpen ? '收起 ▲' : `查看全部 ${hist.length} 局 ▼`}</Button>}
+        {hist.length > 3 && <Button size="small" ghost block style={{ marginTop: 6 }} onClick={() => setRecOpen(!recOpen)}>{recOpen ? '收起 ▲' : `查看全部 ${hist.length} 局 ▼`}</Button>}
       </Card>
     </>
   )
 }
 function Title4() { return <div style={{ fontWeight: 800, color: 'var(--ink1)', padding: '8px 0 2px' }}>胜率</div> }
 
-export function C4Live({ id, data, go, me }: any) {
+export function C4Live({ id, go, me }: any) {
   const [g, setG] = useState<any>(null)
   const [, setNow] = useState(0)
   const recorded = useRef('')
@@ -175,14 +182,14 @@ export function C4Live({ id, data, go, me }: any) {
     pb.collection('c4r').getFullList({ filter: `game="${gk}"` }).then((l) => { if (!l.length)
       pb.collection('c4r').create({ game: gk, winner: g.winner, bn: g.bnm, wn: g.wnm, bId: g.black, wId: g.white,
         mv: parseMv(g.moves || '').length, dur: g.dur || 0 }).catch(quiet)
-    }).then(() => pb.collection('c4r').getFullList({ sort: '-created', filter: 'id != ""' }))
-      .then((all) => { all.slice(100).forEach((x: any) => pb.collection('c4r').delete(x.id).catch(() => {})) }).catch(quiet)
+    }).then(() => pb.collection('c4r').getList(1, 200, { sort: '-created', fields: 'id' }))
+      .then((pg) => { pg.items.slice(100).forEach((x: any) => pb.collection('c4r').delete(x.id).catch(() => {})) }).catch(quiet)
   }, [g?.winner])
   const patch = async (body: any) => { try {
     const r = await fetch(`/api/collections/c4/records/${g.id}`, { method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Authorization: pb.authStore.token as string, 'If-Match': g.updated },
       body: JSON.stringify(body) })
-    if (r.status === 412) { console.warn('stale, resync by realtime'); return }
+    if (r.status === 412) { const cur = await pb.collection('c4').getOne(g.id).catch(() => null); if (cur) setG(cur); return }
     if (!r.ok) throw new Error('HTTP ' + r.status)
   } catch (e) { quiet(e) } }
   const b = g ? boardOf(g.moves || '') : Array(N).fill(0)
@@ -226,7 +233,7 @@ export function C4Live({ id, data, go, me }: any) {
     else patch({ winner: 'draw', state: 'done', prop: '', propBy: '', dur: Math.round((Date.now() - (g.start || Date.now())) / 1000) }) }
   const resign = () => patch({ winner: seat === 'black' ? 'white' : 'black', state: 'done', dur: Math.round((Date.now() - (g.start || Date.now())) / 1000) })
   const rematch = () => patch({ moves: '', winner: '', state: 'live', prop: '', propBy: '', start: Date.now(), dur: 0, round: (g.round || 1) + 1 })
-  const swap = () => patch({ black: g.white, white: g.black, bnm: g.wnm, wnm: g.bnm })
+  const swap = () => patch({ black: g.white, white: g.black, bnm: g.wnm, wnm: g.bnm, moves: '', winner: '', state: 'live', prop: '', propBy: '', start: Date.now(), dur: 0 })
   const takeSeat = (want: string) => patch(want === 'black'
     ? { black: me.id, bnm: myName, white: '', wnm: '', bSeen: Date.now(), state: 'lobby' }
     : { white: me.id, wnm: myName, black: '', bnm: '', wSeen: Date.now(), state: 'lobby' })
@@ -265,8 +272,8 @@ export function C4Live({ id, data, go, me }: any) {
             <div className="pulse" style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent-ink)', margin: '6px 0 10px' }}>⏳ {g.code ? g.code + ' 号房等待加入' : '等待对方加入'} · TA 可在大厅点这局或输入房号</div>
             <div className="mut" style={{ marginBottom: 10 }}>你已占座，开局前还能换：</div>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-              <Button size="small" type={seat === 'black' ? 'primary' : 'ghost'} onClick={() => takeSeat('black')}>执红 · 先</Button>
-              <Button size="small" type={seat === 'white' ? 'primary' : 'ghost'} onClick={() => takeSeat('white')}>执黄 · 后</Button>
+              <Button size="small" type="primary" ghost={seat !== 'black'} onClick={() => takeSeat('black')}>执红 · 先</Button>
+              <Button size="small" type="primary" ghost={seat !== 'white'} onClick={() => takeSeat('white')}>执黄 · 后</Button>
             </div></>}
         </div>)}
       <div className={'c4board' + (winCells ? ' winning' : '')}>
@@ -298,23 +305,23 @@ export function C4Live({ id, data, go, me }: any) {
       {!!g.prop && g.propBy && g.propBy !== seat && !g.winner && seat !== 'watch' &&
         <div className="propbar"><span className="grow">{(g.propBy === 'black' ? g.bnm : g.wnm)} 请求{g.prop === 'undo' ? '悔棋' : '和棋'}</span>
           <Button size="small" type="primary" onClick={() => answer(true)}>同意</Button>
-          <Button size="small" type="ghost" onClick={() => answer(false)}>拒绝</Button></div>}
+          <Button size="small" ghost onClick={() => answer(false)}>拒绝</Button></div>}
       {!!g.prop && g.propBy === seat && !g.winner &&
         <div className="propbar"><span className="grow">已发出{g.prop === 'undo' ? '悔棋' : '和棋'}请求，等待对方回应…</span>
-          <Button size="small" type="ghost" onClick={() => patch({ prop: '', propBy: '' })}>取消</Button></div>}
+          <Button size="small" ghost onClick={() => patch({ prop: '', propBy: '' })}>取消</Button></div>}
       <div className="gfoot">
         {g.winner ? <>
           <span style={{ display: 'flex', gap: 6 }}>
             <Button size="small" type="primary" onClick={rematch}>再来一局</Button>
-            <Button size="small" type="ghost" onClick={swap}>换色</Button></span>
+            <Button size="small" ghost onClick={swap}>换色</Button></span>
           <span className="mut" style={{ textAlign: 'center', fontSize: 11.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{winLineTxt}{g.dur ? ' · ' + Math.max(1, Math.round(g.dur / 60)) + '分' : ''} · {mvArr.length} 手</span>
-          <Button size="small" type="ghost" onClick={() => go('c4', undefined, true)}>回大厅</Button></>
+          <Button size="small" ghost onClick={() => go('c4', undefined, true)}>回大厅</Button></>
           : seat !== 'watch' && seat && bothIn && g.state === 'live' ? <>
-          <Button size="small" type="ghost" onClick={() => ask('undo')} disabled={mvArr.length < 2}>悔棋</Button>
+          <Button size="small" ghost onClick={() => ask('undo')} disabled={mvArr.length < 2}>悔棋</Button>
           <span className="mut" style={{ textAlign: 'center' }}>{statusTxt}</span>
           <span style={{ display: 'flex', gap: 6 }}>
-            <Button size="small" type="ghost" onClick={() => ask('draw')}>和棋</Button>
-            <Button size="small" type="ghost" onClick={resign}>认输</Button></span></>
+            <Button size="small" ghost onClick={() => ask('draw')}>和棋</Button>
+            <Button size="small" ghost onClick={resign}>认输</Button></span></>
           : <span className="mut" style={{ textAlign: 'center', flex: 1 }}>{statusTxt}</span>}
       </div>
       <div className="gmk-hint">离开也不怕 · 回来自动续战 · 点一列，糖果就掉到底</div>

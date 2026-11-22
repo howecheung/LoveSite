@@ -33,23 +33,46 @@
 # 1. 构建前端
 cd app && npm install && npm run build   # 产物在 app/dist
 
-# 2. 启动 PocketBase（把 dist 放到 pb_public 目录）
-cp -r dist ../pb_public
-./pocketbase serve :8094                  # pb_hooks/、pb_migrations/ 同目录放置
+# 2. 启动 PocketBase（把 dist 里的内容放进 pb_public）
+#    Windows:     mkdir ..\pb_public; Copy-Item -Recurse dist\* ..\pb_public\
+#    macOS/Linux: mkdir -p ../pb_public && cp -r dist/* ../pb_public/
+./pocketbase serve :8094                  # pb_migrations/ 与本目录同级
 ```
 
-首次打开 `http://<主机>:8094/_/` 建超管账号，注册两个成员账号即可使用。
+首次打开 `http://<主机>:8094/_/` 建超管账号，再在管理面板的 `members` 集合里**手动添加两个成员账号**（该集合已禁用自助注册）。
 数据表通过 `scripts/schema/` 中的脚本或管理面板创建（members/diaries/albums/moments/wishes/messages/checkins/gmk 等）。
+
+> 备份页（更多 → 备份）调用自定义路由 `/api/ai/backup/*`，需要自建 `pb_hooks/`；本仓库**未附带** hooks，缺失时页面会提示「备份接口不可用」，其余功能不受影响。
+> WebDAV 口令存在 `bkcfg` 集合里（登录成员可读，页面不回显）。站点仅供两人使用；如需更严，请把 `webdavPass` 挪进自建 hooks 的私有配置，前端不再读该字段。
 
 ## 目录结构
 
 ```
-app/            前端（src/App.tsx 主壳 · Gomoku.tsx 五子棋 · core.ts · 主题 CSS）
-pb_hooks/       PocketBase 服务端钩子
-pb_migrations/  PocketBase 迁移
+app/            前端（src/App.tsx 主壳 · pages/modals/shared 拆分 · Gomoku/Connect4/Flying 三款游戏 · core.ts · 主题 CSS）
+app/public/     PWA（sw.js / manifest / icons / emoji 字体）
+pb_migrations/  PocketBase 迁移（集合字段与权限）
 scripts/schema/ 集合字段迁移脚本（可重放）
+scripts/smoke.mjs 接口自检（见下）
 tests/          双浏览器 E2E（CDP）：房号加入、悔棋、终局特效回归
+docs/           PocketBase 官方更新日志存档
 ```
+
+## 自检
+
+```bash
+PB_URL=http://127.0.0.1:8094 SMOKE_USER_1=你的账号 SMOKE_USER_2=对方账号 SMOKE_PASS=你的密码 node scripts/smoke.mjs
+```
+
+跑 48 项接口检查：认证、读写权限负例、点赞计数、相册追加、三款游戏建房→落子→判胜→战绩→删局、改密兜底。默认值只是本地开发示例，**自己的环境必须用环境变量覆盖**：
+
+| 变量 | 默认（仅本地示例） |
+|---|---|
+| `PB_URL` | `http://127.0.0.1:8094` |
+| `SMOKE_USER_1` / `SMOKE_USER_2` | `zwh` / `mm` |
+| `SMOKE_PASS` | `12345678` |
+| `SMOKE_ADMIN_EMAIL` / `SMOKE_ADMIN_PASS` | 空（改密项失败时用超管复原） |
+
+前端类型检查与构建：`cd app && npm run typecheck && npm run build`（tsconfig 已开启 `noUnusedLocals` / `noUnusedParameters`）。
 
 ## 第三方许可
 
