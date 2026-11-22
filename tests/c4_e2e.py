@@ -44,7 +44,7 @@ async def login(tab, ident):
     await tab.c("Emulation.setDeviceMetricsOverride", width=390, height=844, deviceScaleFactor=2, mobile=True)
     await tab.c("Page.navigate", url="http://127.0.0.1:8094/")
     await asyncio.sleep(2.2)
-    await tab.js(f"""const r=await fetch('/api/collections/members/auth-with-password',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{identity:'{ident}',password:'123'}})}});const j=await r.json();localStorage.setItem('pocketbase_auth',JSON.stringify(j));location.reload();return 1""")
+    await tab.js(f"""const r=await fetch('/api/collections/members/auth-with-password',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{identity:'{ident}',password:'{E2E_PW}'}})}});const j=await r.json();localStorage.setItem('pocketbase_auth',JSON.stringify(j));location.reload();return 1""")
     await asyncio.sleep(3.8)
 
 async def main():
