@@ -2,17 +2,24 @@
 // doneDate 原来是 autodate：客户端传值会被忽略，且每次 update 都会刷新（取消勾选也会改日期）。
 // 改成 text，由前端写 YYYY-MM-DD，语义才是“哪天完成的”。
 // 注意：PocketBase 改字段类型会先 DROP COLUMN 再 ADD COLUMN，直接改会清空历史完成日期，
-// 所以这里先把存量的 autodate 值读出来（形如 "2026-11-20 00:00:00.000Z"），
-// 截成 YYYY-MM-DD 保存在内存里，等新字段加好再逐条回写。
+// 所以这里先把存量的 autodate 值读出来（形如 "2026-11-20 00:00:00.000Z" + UTC 时区），
+// 按服务器本地时区格式化成 YYYY-MM-DD 暂存，等新字段加好再逐条回写。
+// 为什么要过 Date：autodate 存的是 UTC 时刻，直接 slice(0,10) 在东八区凌晨会差一天。
 migrate((app) => {
+  const ymd = (raw) => {
+    if (!raw) return ""
+    const d = new Date(String(raw))
+    if (isNaN(d.getTime())) return ""
+    const p = (n) => (n < 10 ? "0" + n : "" + n)
+    return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate())
+  }
   const collection = app.findCollectionByNameOrId("pbc_3927760422")
   const old = collection.fields.getByName("doneDate")
   const kept = {}
   if (old) {
     const rows = app.findRecordsByFilter("pbc_3927760422", "", "", 0, 0)
     for (const row of rows) {
-      const raw = row.get("doneDate")
-      const text = raw ? String(raw).slice(0, 10) : ""
+      const text = ymd(row.get("doneDate"))
       if (text) kept[row.id] = text
     }
     collection.fields.removeById(old.id)
