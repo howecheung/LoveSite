@@ -16,9 +16,9 @@ function Games({ go }: any) {
   const rows = [
     { ic: 'gomoku', t: '五子棋', s: '跨设备联机 · 实时对战 · 同屏模式', k: 'gomoku', on: true },
     { ic: '🍬', t: '四子棋', s: '糖果对弈 · 跨设备联机 · 四连即胜', k: 'c4', on: true },
+    { ic: '✈️', t: '情侣飞行棋', s: '掷骰走格 · 情侣任务 · 联机+同屏', k: 'fly', on: true },
     { ic: '🧩', t: '记忆翻牌', s: '敬请期待', k: '', on: false },
     { ic: '🃏', t: '24 点对战', s: '敬请期待', k: '', on: false },
-    { ic: '✈️', t: '情侣飞行棋', s: '掷骰走格 · 情侣任务 · 联机+同屏', k: 'fly', on: true },
   ]
   return (
     <Card color="app-teal" className="blk"><Title size="small" variant="tab">游戏厅</Title>
@@ -261,7 +261,7 @@ function GomokuLive({ id, go, me }: any) {
     : oppOnline ? `第 ${mvArr.length + 1} 手 · ${oppSeatName || '对方'} 思考中…` : `第 ${mvArr.length + 1} 手 · 对方暂时离开，落子会同步`
   return (
     <Card className="blk gmk-box">
-      {!!g.code && <div className="mut" style={{ textAlign: 'center', fontSize: 11.5, marginBottom: 6 }}>房间号 <b style={{ color: 'var(--accent-ink)', letterSpacing: 2 }}>{g.code}</b> · 报号加入</div>}
+      {!!g.code && <div className="mut" style={{ textAlign: 'center', fontSize: 11.5, marginBottom: 6 }}>房间号 <b style={{ color: 'var(--accent-ink)', letterSpacing: 2 }}>{g.code}</b> · <span className="cp" onClick={() => { navigator.clipboard?.writeText(String(g.code)).then(() => showToast('房号已复制')).catch(() => showToast('复制失败，手动选一下')) }}>复制</span></div>}
       <div className="pvp">
         {(['black', 'white'] as const).map((sk) => {
           const name2 = sk === 'black' ? g.bnm : g.wnm

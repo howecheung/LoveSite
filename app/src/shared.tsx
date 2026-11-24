@@ -1,5 +1,6 @@
 // Shared helpers: date/format utils, mood tables, EXIF text, image compress, CountNum, Clock
 import { useEffect, useState } from 'react'
+import { nextOccurLunar } from './utils'
 
 const exifLine = (t: string) => { try { const j = JSON.parse(t); const a: string[] = []; if (j.date) a.push(j.date.slice(0, 10).replace(/:/g, '-')); if (j.cam) a.push(j.cam); if (j.gps) a.push('GPS ' + j.gps.join(',')); return a.join(' · ') } catch { return '' } }
 const lmdText = (md: string) => { const [m, d] = md.split('-').map(Number); const LM = ['正','二','三','四','五','六','七','八','九','十','冬','腊']; const LD = ['初一','初二','初三','初四','初五','初六','初七','初八','初九','初十','十一','十二','十三','十四','十五','十六','十七','十八','十九','二十','廿一','廿二','廿三','廿四','廿五','廿六','廿七','廿八','廿九','三十']; return LM[m - 1] + '月' + LD[d - 1] }
@@ -35,16 +36,41 @@ const sinceParts = (d: string) => {
 async function compressImg(fl: File): Promise<File> {
   try {
     if (fl.type === 'image/gif' || fl.size < 1.5 * 1048576) return fl
+    // 省流模式压得更狠；高清模式保留更多细节
+    const hd = (() => { try { return localStorage.getItem('ai-img') === 'hd' } catch { return false } })()
+    const MAX = hd ? 2400 : 1600
+    const Q = hd ? 0.88 : 0.82
     const bmp: any = await createImageBitmap(fl)
-    const sc = Math.min(1, 2400 / Math.max(bmp.width || 2400, bmp.height || 2400))
+    const sc = Math.min(1, MAX / Math.max(bmp.width || MAX, bmp.height || MAX))
     const cv = document.createElement('canvas')
-    cv.width = Math.max(1, Math.round((bmp.width || 2400) * sc)); cv.height = Math.max(1, Math.round((bmp.height || 2400) * sc))
+    cv.width = Math.max(1, Math.round((bmp.width || MAX) * sc)); cv.height = Math.max(1, Math.round((bmp.height || MAX) * sc))
     cv.getContext('2d')!.drawImage(bmp, 0, 0, cv.width, cv.height)
     if (bmp.close) bmp.close()
-    const blob: any = await new Promise((r) => cv.toBlob(r, 'image/jpeg', 0.85))
+    const blob: any = await new Promise((r) => cv.toBlob(r, 'image/jpeg', Q))
     if (!blob) return fl
     return new File([blob], fl.name.replace(/\.(heic|heif)$/i, '.jpg'), { type: 'image/jpeg', lastModified: Date.now() })
   } catch { return fl }
+}
+
+// 真实提醒：今天还没打卡、三五天内的纪念日、对方最近发的内容
+function buildNotices(data: any, me: any) {
+  const out: any[] = []
+  const t = today()
+  const myId = me?.id
+  const myName = me?.nickName || me?.username || ''
+  const plans: any[] = data?.checkins || []
+  const recs: any[] = data?.ckrecords || []
+  const undone = plans.filter((p) => !recs.some((r) => r.plan === p.id && r.who === myName && r.day === t))
+  if (undone.length) out.push({ id: 'ck', ic: '✅', t: `今天还有 ${undone.length} 个计划没打卡`, s: undone.map((p) => p.name).join(' · '), go: 'checkin' })
+  for (const m of data?.moments || []) {
+    let n = 0
+    try { n = m.lunar && m.lunarMD ? nextOccurLunar(m.lunarMD, m.yearly) : nextOccur(m.day, m.yearly) } catch { n = 0 }
+    if (n >= 0 && n <= 3) out.push({ id: 'mo' + m.id, ic: m.emoji || '💗', t: n === 0 ? `今天是「${m.name}」` : `还有 ${n} 天：${m.name}`, s: m.note || '', go: 'countdown' })
+  }
+  const other = (me?.id ? (data?.diaries || []).filter((d: any) => d.member && d.member !== myId) : [])
+  const recent = other.filter((d: any) => Date.now() - new Date(d.created).getTime() < 3 * 86400000)
+  if (recent.length) out.push({ id: 'di', ic: '📔', t: `TA 最近发了 ${recent.length} 篇日常`, s: recent[0].title || recent[0].text?.slice(0, 18) || '', go: 'diary' })
+  return out
 }
 
 // 天数滚动计数：easeOutExpo（与官方 CountUp 同曲线），输出普通 <b> 保持行内排版
@@ -73,4 +99,4 @@ function Clock({ start }: any) {
   return <>{q.h}小时{q.m}分{q.s}秒</>
 }
 
-export { exifLine, lmdText, MOODS, MOOD_CN, MOOD_IC, MOOD_TAG, dayStr, fmtDT, today, daysSince, nextOccur, sinceParts, compressImg, CountNum, Clock }
+export { exifLine, lmdText, MOODS, MOOD_CN, MOOD_IC, MOOD_TAG, dayStr, fmtDT, today, daysSince, nextOccur, sinceParts, compressImg, CountNum, Clock, buildNotices }

@@ -15,6 +15,7 @@ export const TILES = [
   { k: 'message', ic: '💬', t: '祝福语', s: '写下祝福', c: 'app-teal' },
   { k: 'countdown', ic: '⏳', t: '倒计时', s: '重要的日子', c: 'brown' },
   { k: 'games', ic: '🎮', t: '小游戏', s: '双人同乐', c: 'app-teal' },
+  { k: 'footprint', ic: '👣', t: '足迹地图', s: '照片里的地方', c: 'app-blue' },
   { k: 'about', ic: '👩‍❤️‍👨', t: '关于我们', s: '我们的故事', c: 'app-red' },
 ]
 // 首页宫格 = 可按需覆盖的 stored 列表（存 settings.tiles，两端实时同步）

@@ -249,7 +249,7 @@ export function C4Live({ id, go, me }: any) {
     : oppOnline ? `第 ${mvArr.length + 1} 手 · ${oppSeatName || '对方'} 思考中…` : `第 ${mvArr.length + 1} 手 · 对方暂时离开，落子会同步`
   return (
     <Card className="blk gmk-box">
-      {!!g.code && <div className="mut" style={{ textAlign: 'center', fontSize: 11.5, marginBottom: 6 }}>房间号 <b style={{ color: 'var(--accent-ink)', letterSpacing: 2 }}>{g.code}</b> · 报号加入</div>}
+      {!!g.code && <div className="mut" style={{ textAlign: 'center', fontSize: 11.5, marginBottom: 6 }}>房间号 <b style={{ color: 'var(--accent-ink)', letterSpacing: 2 }}>{g.code}</b> · <span className="cp" onClick={() => { navigator.clipboard?.writeText(String(g.code)).then(() => showToast('房号已复制')).catch(() => showToast('复制失败，手动选一下')) }}>复制</span></div>}
       <div className="pvp">
         {(['black', 'white'] as const).map((sk) => {
           const name2 = sk === 'black' ? g.bnm : g.wnm

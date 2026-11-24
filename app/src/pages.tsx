@@ -1,10 +1,10 @@
 // Full-page components inside the site shell (no modal forms)
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Card, Title, Button, Input, Tag, Divider, Modal } from 'animal-island-ui'
 import { motion, AnimatePresence } from 'motion/react'
 import { spring, tapSmall, listVariant, itemVariant } from './motion'
 import { Ic } from './Icons'
-import { pb, quiet } from './core'
+import { pb, quiet, showToast } from './core'
 import { readExif, nextOccurLunar } from './utils'
 import {
   exifLine, lmdText, fmtDT, dayStr, today, daysSince, nextOccur,
@@ -62,7 +62,7 @@ function HomeExtra({ data, go }: any) {
   )
 }
 
-function Diary({ data, reload, onAdd, unlocked, askLock }: any) {
+function Diary({ data, reload, onAdd, onEdit, unlocked, askLock }: any) {
   const like = async (d: any) => { try { await pb.collection('diaries').update(d.id, { 'likes+': 1 }); reload() } catch (e) { quiet(e) } }
   const [open, setOpen] = useState<string>('')
   const [pop, setPop] = useState('')
@@ -86,6 +86,7 @@ function Diary({ data, reload, onAdd, unlocked, askLock }: any) {
               {!locked && <Tag size="small" color={MOOD_TAG[d.mood] || 'app-pink'}>{MOOD_CN[d.mood] || d.mood}</Tag>}</span>
               <div className="mut">{fmtDT(d.created)}</div></span>
             {d.private && !lockOn ? <Tag size="small" color="brown"><Ic v="🔒" size={12} /> 私密</Tag> : null}
+            {!locked && <motion.button {...tapSmall} className="morebtn" title="编辑 / 删除" onClick={() => onEdit('diary-edit', d)}><Ic v="⋯" size={15} /></motion.button>}
           </div>
           {locked ? (
             <div style={{ textAlign: 'center', padding: '14px 0' }}>
@@ -205,11 +206,12 @@ function Albums({ data, reload, onAdd, go, grid, setGrid }: any) {
   )
 }
 
-function AlbumView({ id, data, reload, go }: any) {
+function AlbumView({ id, data, reload, go, onEdit }: any) {
   const a = data.albums.find((x: any) => x.id === id)
   const [big, setBig] = useState(-1)
   const [ask, setAsk] = useState('')
   const [askA, setAskA] = useState(false)
+  const [info, setInfo] = useState('')
   const [busy, setBusy] = useState(false)
   if (!a) return <Card className="blk"><div className="mut" style={{ textAlign: 'center', padding: 22 }}>这本相册不存在或已被删除</div></Card>
   const gurl = (f: string) => pb.files.getURL(a, f)
@@ -234,16 +236,30 @@ function AlbumView({ id, data, reload, go }: any) {
     } catch (e) { quiet(e) }
     setBusy(false)
   }
-  const addMore = async (fs: File[]) => {
-    if (!fs.length) return
+  const addMore = async (raw: File[]) => {
+    if (!raw.length) return
     setBusy(true)
-    try {
-      const ex: any = { ...(JSON.parse(a.exifs || '{}')) }
-      for (const x of fs) { const r = await readExif(x); if (r) ex[x.name] = r }
-      await pb.collection('albums').update(a.id, { 'photos+': fs, exifs: JSON.stringify(ex) })
-      reload()
-    } catch (e) { quiet(e) }
+    let ok = 0, bad = 0
+    const ex: any = { ...(JSON.parse(a.exifs || '{}')) }
+    let cur: string[] = [...(a.photos || [])]
+    for (const src of raw) {
+      try {
+        // 先读原始文件的 EXIF（压缩成 JPEG 后 EXIF 会被丢掉），再压缩上传
+        const info = await readExif(src).catch(() => null)
+        const f = await compressImg(src)
+        const rec = await pb.collection('albums').update(a.id, { 'photos+': f })
+        const added = (rec.photos || []).filter((n: string) => !cur.includes(n))
+        if (info && added.length === 1) ex[added[0]] = info
+        cur = rec.photos || cur
+        ok++
+      } catch (e) { bad++; console.warn('add photo failed', src.name, e) }
+    }
+    if (ok && Object.keys(ex).length) await pb.collection('albums').update(a.id, { exifs: JSON.stringify(ex) }).catch(() => {})
+    if (bad && ok) showToast(`${ok} 张已加入，${bad} 张失败（可换 JPG 或压小后再试）`)
+    else if (bad) showToast(`${bad} 张都没传上去：格式不支持或文件太大`)
+    else if (ok > 1) showToast(`已加入 ${ok} 张`)
     setBusy(false)
+    reload()
   }
   return (
     <>
@@ -261,8 +277,9 @@ function AlbumView({ id, data, reload, go }: any) {
         <div className="pfoot" style={{ marginTop: 2 }}>
           <span><Ic v="👁️" size={14} /> {a.views || 0}</span>
           <span><Ic v="🖼️" size={14} /> {ps.length}</span>
-          <label className="picbtn" style={{ marginLeft: 'auto' }}><Ic v="➕" size={14} /> 加照片
-            <input type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={async (e) => addMore(await Promise.all([...(e.target.files || [])].map(compressImg)))} /></label>
+          <label className="picbtn" style={{ marginLeft: 'auto' }}><Ic v="➕" size={14} /> {busy ? '上传中…' : '加照片'}
+            <input type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={(e) => { const fs = [...(e.target.files || [])]; e.currentTarget.value = ''; addMore(fs) }} /></label>
+          <motion.button {...tapSmall} className="morebtn" title="改名 / 备注 / 封面" onClick={() => onEdit('album-edit', a)}><Ic v="✏️" size={15} /></motion.button>
           <motion.span {...tapSmall} className="delAlbum" title="删除相册" onClick={() => setAskA(true)}><Ic v="🗑️" size={16} /></motion.span>
         </div>
       </Card>
@@ -278,12 +295,33 @@ function AlbumView({ id, data, reload, go }: any) {
         <motion.img layoutId={`gph-${big}`} src={gurl(ps[big])} alt="" onClick={(e) => e.stopPropagation()} />
         <div className="lbbar" onClick={(e) => e.stopPropagation()}>
           <button onClick={() => setBig((big + ps.length - 1) % ps.length)}>‹</button>
-          <span className="mut">{big + 1}/{ps.length}{(() => { const e2 = exOf(ps[big]); return e2 ? ' · ' + exifLine(JSON.stringify(e2)) : '' })()}</span>
+          <span className="mut">{big + 1}/{ps.length}</span>
+          <button title="照片信息" onClick={() => setInfo(ps[big])}><Ic v="📷" size={16} /></button>
           <button onClick={() => setAsk(ps[big])}><Ic v="🗑️" size={16} /></button>
+          <button title="下载原图" onClick={() => { const a = document.createElement('a'); a.href = gurl(ps[big]); a.download = ps[big]; a.click() }}><Ic v="⬇️" size={16} /></button>
           <button onClick={() => setBig((big + 1) % ps.length)}>›</button>
           <button className="lbx" onClick={() => setBig(-1)}><Ic v="close" size={20} /></button>
         </div>
       </motion.div>}</AnimatePresence>
+      <Modal open={!!info} onClose={() => setInfo('')} typewriter={false} title="照片信息"
+        footer={<div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+          <Button ghost onClick={() => setInfo('')}>关闭</Button>
+          {!!(exOf(info) as any)?.gps && <Button type="primary" onClick={() => { setInfo(''); setBig(-1); go('footprint') }}>在地图里看</Button>}
+        </div>}>
+        {(() => {
+          const e: any = exOf(info) || {}
+          const rows: [string, string][] = [
+            ['拍摄时间', e.date || '未记录'],
+            ['相机', e.cam || '未记录'],
+            ['坐标', Array.isArray(e.gps) ? e.gps.map((n: any) => Number(n).toFixed(4)).join(', ') : '未记录'],
+            ['文件', info || '—'],
+          ]
+          return <div>{rows.map(([k, v]) => <div className="li" key={k}>
+            <span className="grow">{k}</span>
+            <span className="mut" style={{ textAlign: 'right', maxWidth: '62%', wordBreak: 'break-all' }}>{v}</span>
+          </div>)}</div>
+        })()}
+      </Modal>
       <Modal open={askA} onClose={() => setAskA(false)} typewriter={false} title="删除整个相册？"
         footer={<div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
           <Button ghost onClick={() => setAskA(false)}>取消</Button>
@@ -302,7 +340,7 @@ function AlbumView({ id, data, reload, go }: any) {
   )
 }
 
-function Wishes({ data, reload, onAdd }: any) {
+function Wishes({ data, reload, onAdd, onEdit }: any) {
   const done = data.wishes.filter((w: any) => w.done).length
   const pct = data.wishes.length ? Math.round(done / data.wishes.length * 100) : 0
   const toggle = async (w: any) => { const d = !w.done; try { await pb.collection('wishes').update(w.id, { done: d, doneDate: d ? today() : '' }); reload() } catch (e) { quiet(e) } }
@@ -321,6 +359,7 @@ function Wishes({ data, reload, onAdd }: any) {
             <button className={"tick" + (w.done ? " on" : "")} onClick={() => toggle(w)}>{w.done ? "✓" : ""}</button>
             <span className="grow" style={{ fontSize: 14.5 }}>{w.text}</span>
             {w.done && w.doneDate && <span className="mut">{dayStr(w.doneDate)}</span>}
+            <motion.button {...tapSmall} className="morebtn" title="编辑 / 删除" onClick={() => onEdit('wish-edit', w)}><Ic v="⋯" size={15} /></motion.button>
           </div>
         ))}
         {!data.wishes.length && <div className="mut" style={{ textAlign: 'center', padding: 18 }}>还没有约定，写下第一件想一起做的事</div>}
@@ -329,7 +368,7 @@ function Wishes({ data, reload, onAdd }: any) {
   )
 }
 
-function Moments({ data, onAdd }: any) {
+function Moments({ data, onAdd, onEdit }: any) {
   return (
     <>
       <div className="pbar"><Button type="primary" onClick={onAdd}><Ic v="➕" size={14} /> 添加日子</Button><span className="mut">{data.moments.length} 个纪念日</span></div>
@@ -342,6 +381,7 @@ function Moments({ data, onAdd }: any) {
               <span className="grow"><b style={{ fontSize: 15 }}>{m.name}</b>
                 <div className="mut">{m.lunar && m.lunarMD ? `农历${lmdText(m.lunarMD)}` : dayStr(m.day)}{m.yearly ? ' · 每年' : ''}{m.note ? ` · ${m.note}` : ''}</div></span>
               <span className="dayn">{Math.abs(n)}<small>{n < 0 ? '已过天数' : '天后'}</small></span>
+              <motion.button {...tapSmall} className="morebtn" title="编辑 / 删除" onClick={() => onEdit('moment-edit', m)}><Ic v="⋯" size={15} /></motion.button>
             </div>
           </Card>
         )
@@ -351,8 +391,13 @@ function Moments({ data, onAdd }: any) {
   )
 }
 
-function Checkin({ data, reload, me, onAdd }: any) {
-  const did = (pid: string) => data.ckrecords.some((r: any) => r.plan === pid && r.who === me)
+function Checkin({ data, reload, me, onAdd, onEdit }: any) {
+  const did = (pid: string) => data.ckrecords.some((r: any) => r.plan === pid && r.who === me && r.day === today())
+  const ymd = (off: number) => {
+    const d = new Date(); d.setDate(d.getDate() - off)
+    const z = (n: number) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`
+  }
   return (
     <>
       <div className="pbar"><Button type="primary" onClick={onAdd}><Ic v="➕" size={14} /> 新计划</Button><span className="mut">今天 · {today()}</span></div>
@@ -366,6 +411,12 @@ function Checkin({ data, reload, me, onAdd }: any) {
               <Button size="small" type={on ? 'text' : 'primary'} disabled={on} onClick={async () => {
                 await pb.collection('ckrecords').create({ plan: c.id, who: me, day: today() }); reload()
               }}>{on ? '✓ 已打卡' : '打卡'}</Button>
+              {!on && <Button size="small" type="text" onClick={async () => {
+                const d = ymd(1)
+                if (data.ckrecords.some((r: any) => r.plan === c.id && r.who === me && r.day === d)) { showToast('昨天已经打过卡啦'); return }
+                try { await pb.collection('ckrecords').create({ plan: c.id, who: me, day: d }); showToast('已补昨天的卡'); reload() } catch (e) { quiet(e) }
+              }}>补昨天</Button>}
+              <motion.button {...tapSmall} className="morebtn" title="历史 / 删除" onClick={() => onEdit('checkin-more', c)}><Ic v="⋯" size={15} /></motion.button>
             </div>
           )
         })}
@@ -375,7 +426,7 @@ function Checkin({ data, reload, me, onAdd }: any) {
   )
 }
 
-function Msgs({ data, reload, me }: any) {
+function Msgs({ data, reload, me, myId, onEdit }: any) {
   const [t, setT] = useState('')
   return (
     <>
@@ -394,6 +445,7 @@ function Msgs({ data, reload, me }: any) {
           <div className="li" style={{ padding: '8px 0 0', border: 0 }}>
             <Tag size="small" color="purple"><Ic v="💌" size={12} /> {m.mood || '祝福'}</Tag>
             <span className="grow" /><span className="mut">{fmtDT(m.created)}</span>
+            {myId && m.member === myId && <motion.button {...tapSmall} className="morebtn" title="删除" onClick={() => onEdit('msg-del', m)}><Ic v="⋯" size={15} /></motion.button>}
           </div>
         </Card>
       ))}
@@ -402,22 +454,105 @@ function Msgs({ data, reload, me }: any) {
   )
 }
 
-function Tools() {
-  const FOODS = ['火锅', '日料', '烧烤', '粤菜', '麻辣烫', '披萨', '饺子', '家常炒菜', '米线', '汉堡', '泰餐', '蒸菜', '砂锅粥', '铁板烧', '小面', '轻食沙拉']
-  const PLACES = ['公园散步', '看场电影', '逛博物馆', '去海边', '爬山', '逛书店', '密室逃脱', '游乐园', '咖啡厅发呆', '看展', '骑行绿道', '露营看星星']
-  const [pick, setPick] = useState<any>({})
-  const roll = (kind: string, arr: string[]) => setPick((p: any) => ({ ...p, [kind]: arr[Math.floor(Math.random() * arr.length)] }))
-  const TCard = ({ t, ic, k, arr, color }: any) => (
-    <Card color={color} className="blk" style={{ textAlign: 'center' }}>
-      <Title size="small" variant="tab"><Ic v={ic} size={15} /> {t}</Title>
-      <div style={{ margin: '10px 0' }}><b style={{ fontSize: 34, color: '#c2456e' }}>{pick[k] || '？'}</b></div>
-      <Button type="primary" onClick={() => roll(k, arr)}>帮我决定</Button>
-    </Card>
-  )
+function Tools({ data, reload }: any) {
+  const DEF_EAT = ['火锅', '日料', '烧烤', '粤菜', '麻辣烫', '披萨', '饺子', '家常炒菜', '米线', '汉堡', '泰餐', '砂锅粥', '铁板烧', '小面', '轻食沙拉']
+  const DEF_DO = ['公园散步', '看场电影', '逛博物馆', '去海边', '爬山', '逛书店', '密室逃脱', '游乐园', '咖啡厅发呆', '看展', '骑行绿道', '露营看星星']
+  const sid = data.setting?.id
+  const eat = Array.isArray(data.setting?.eatOpts) && data.setting.eatOpts.length ? data.setting.eatOpts : DEF_EAT
+  const todo = Array.isArray(data.setting?.doOpts) && data.setting.doOpts.length ? data.setting.doOpts : DEF_DO
+  const [show, setShow] = useState<any>({})
+  const [roll, setRoll] = useState('')
+  const [burst, setBurst] = useState('')
+  const [draft, setDraft] = useState<any>({ eat: '', do: '' })
+  const timers = useRef<any[]>([])
+
+  useEffect(() => () => timers.current.forEach((t) => { clearInterval(t); clearTimeout(t) }), [])
+
+  const opts = (k: string): string[] => (k === 'eat' ? eat : todo)
+
+  const saveOpts = async (k: string, arr: string[]) => {
+    const body: any = k === 'eat' ? { eatOpts: arr } : { doOpts: arr }
+    try {
+      if (sid) await pb.collection('settings').update(sid, body)
+      else await pb.collection('settings').create(body)
+      reload()
+    } catch (e: any) { quiet(e) }
+  }
+
+  const addOpt = async (k: string) => {
+    const v = String(draft[k] || '').trim()
+    if (!v) return
+    if (opts(k).includes(v)) { setDraft({ ...draft, [k]: '' }); return }
+    await saveOpts(k, [...opts(k), v])
+    setDraft({ ...draft, [k]: '' })
+  }
+
+  const spin = (k: string) => {
+    const list = opts(k)
+    if (!list.length || roll) return
+    setRoll(k); setBurst('')
+    let n = 0
+    const t = setInterval(() => {
+      setShow((s: any) => ({ ...s, [k]: list[Math.floor(Math.random() * list.length)] }))
+      if (++n >= 14) {
+        clearInterval(t)
+        const out = list[Math.floor(Math.random() * list.length)]
+        setShow((s: any) => ({ ...s, [k]: out }))
+        setRoll('')
+        setBurst(k)
+        timers.current.push(setTimeout(() => setBurst(''), 900))
+      }
+    }, 80)
+    timers.current.push(t)
+  }
+
+  const PickCard = ({ k, title, ic, color }: any) => {
+    const val = show[k]
+    const list = opts(k)
+    return (
+      <Card color={color} className="blk toolcard">
+        <Title size="small" variant="tab"><Ic v={ic} size={15} /> {title}</Title>
+        <div className="toolstage">
+          <AnimatePresence mode="wait">
+            <motion.div key={val || 'empty'} className={'toolval' + (roll === k ? ' rolling' : '')}
+              initial={{ opacity: 0, y: 10, scale: .9 }} animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -8, scale: .94 }} transition={spring}>
+              {val || '？'}
+            </motion.div>
+          </AnimatePresence>
+          {burst === k && (
+            <div className="burst" aria-hidden>
+              {[0, 1, 2, 3, 4, 5].map((i) => <span key={i} style={{ '--i': i } as any}><Ic v="✨" size={14} /></span>)}
+            </div>
+          )}
+        </div>
+        <Button type="primary" block disabled={!!roll} onClick={() => spin(k)}>
+          {roll === k ? '摇一摇…' : '帮我决定'}
+        </Button>
+        <Divider style={{ margin: '12px 0 10px' }} />
+        <div className="mut" style={{ fontSize: 12.5, marginBottom: 8 }}>我的菜单 · {list.length} 项</div>
+        <div className="optchips">
+          {list.map((o: string, i: number) => (
+            <Tag key={o + i} color="app-pink">
+              {o}
+              <span className="optx" title="删除" onClick={() => saveOpts(k, list.filter((_, j) => j !== i))}>×</span>
+            </Tag>
+          ))}
+        </div>
+        <div className="r2" style={{ marginTop: 10 }}>
+          <Input value={draft[k]} placeholder={'加一个' + (k === 'eat' ? '想吃' : '想玩') + '的…'}
+            onChange={(e: any) => setDraft({ ...draft, [k]: e.target.value })}
+            onKeyDown={(e: any) => { if (e.key === 'Enter') addOpt(k) }} />
+          <Button onClick={() => addOpt(k)}>添加</Button>
+        </div>
+      </Card>
+    )
+  }
+
   return (
     <>
-      <TCard t="吃什么" ic="🍜" k="food" arr={FOODS} color="app-orange" />
-      <TCard t="去哪玩" ic="🗺️" k="place" arr={PLACES} color="app-teal" />
+      <PickCard k="eat" title="吃什么" ic="🍜" color="app-orange" />
+      <PickCard k="do" title="做什么" ic="🧭" color="app-teal" />
     </>
   )
 }
@@ -449,19 +584,38 @@ function About({ data }: any) {
 
 function BackupPage({ reload }: any) {
   const [c, setC] = useState<any>(null)
-  const [list, setList] = useState<any>({ items: [], lastRun: '', lastResult: '', auto: true })
+  const [files, setFiles] = useState<any[]>([])
   const [busy, setBusy] = useState<string>('')
   const [msg, setMsg] = useState<any>(null)
+  const mb = (n: number) => (n / 1024 / 1024).toFixed(2) + ' MB'
+
   const get = () => pb.collection('bkcfg').getFullList().then((r: any) => r[0] || null).then((r: any) => {
     // webdavPass 是 hidden 字段，接口永远不下发；只标记「已有配置」，要改密码就重填
     const { webdavPass, ...rest } = r || {}
     setC({ ...rest, auto: r ? !!r.auto : true, hasSaved: !!(r && (r.webdavUrl || r.webdavUser)) })
-    setList((l: any) => ({ ...l, auto: r ? !!r.auto : true }))
-  }).catch((e: any) => setMsg({ ok: false, text: 'bkcfg 读取失败：' + String(e?.message || e) }))
-  useEffect(() => { get(); fetchList() }, [])
-  const fetchList = () => fetch('/api/ai/backup/list', { headers: { Authorization: pb.authStore.token! } })
-    .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
-    .then(setList).catch((e: any) => setMsg({ ok: false, text: '备份接口不可用（未安装 pb_hooks？）：' + String(e?.message || e) }))
+  }).catch((e: any) => setMsg({ ok: false, text: '读取备份设置失败：' + String(e?.message || e) }))
+
+  // 统一走 SDK 的 send：token 由 SDK 自己带，401 也能拿到 PB 的原始错误
+  const call = async (path: string, method = 'GET') => {
+    try {
+      return { ok: true, j: await pb.send(path, { method }) }
+    } catch (e: any) {
+      const s = e?.status || 0
+      const text = s === 401 ? '登录已过期，请退出后重新登录'
+        : s === 403 ? '没有权限（需要成员账号登录）'
+          : s === 404 ? '接口不存在：pb_hooks 没加载？'
+            : (e?.response?.message || e?.message || String(e))
+      return { ok: false, s, text }
+    }
+  }
+
+  const list = () => call('/api/ai/backup/list').then((r) => {
+    if (r.ok) setFiles(r.j.items || [])
+    else setMsg({ ok: false, text: `读取备份列表失败：${r.text}` })
+  })
+
+  useEffect(() => { get(); list() }, [])
+
   const save = async (patch: any, toast = '已保存') => {
     setBusy('save'); setMsg(null)
     try {
@@ -470,74 +624,97 @@ function BackupPage({ reload }: any) {
       if (c.id) await pb.collection('bkcfg').update(c.id, body)
       else await pb.collection('bkcfg').create({ auto: true, ...body })
       await get(); setMsg({ ok: true, text: toast })
-    }
-    catch (e: any) { setMsg({ ok: false, text: String(e?.message || e) }) }
-    setBusy('')
-  }
-  const call = async (kind: string, url: string) => {
-    setBusy(kind); setMsg(null)
-    try {
-      const r = await fetch(url, { method: 'POST', headers: { Authorization: pb.authStore.token! } })
-      if (!r.ok) throw new Error(`HTTP ${r.status}（未安装备份 hooks？）`)
-      const j = await r.json()
-      if (kind === 'dav') setMsg(j.ok ? { ok: true, text: 'WebDAV 可用：' + j.detail } : { ok: false, text: j.detail })
-      else { setMsg({ ok: !String(j.output).includes('✗'), text: String(j.output).replace(/^OK /, '') }); fetchList(); reload() }
     } catch (e: any) { setMsg({ ok: false, text: String(e?.message || e) }) }
     setBusy('')
   }
+
+  const run = async () => {
+    setBusy('run'); setMsg(null)
+    const r = await call('/api/ai/backup/run', 'POST')
+    if (!r.ok) setMsg({ ok: false, text: '备份失败：' + r.text })
+    else {
+      let text = `已生成 ${r.j.name}（${mb(r.j.size)}）`
+      if (r.j.pushed) text += r.j.pushed.ok ? '，已上传 WebDAV' : `，WebDAV 上传失败（HTTP ${r.j.pushed.status}）`
+      setMsg({ ok: true, text }); list(); reload()
+    }
+    setBusy('')
+  }
+
+  const testDav = async () => {
+    setBusy('dav'); setMsg(null)
+    const r = await call('/api/ai/backup/test-dav', 'POST')
+    if (!r.ok) setMsg({ ok: false, text: '测试失败：' + r.text })
+    else setMsg(r.j.ok
+      ? { ok: true, text: `WebDAV 可用（HTTP ${r.j.status}）：${r.j.url}` }
+      : { ok: false, text: `连接失败（HTTP ${r.j.status}）：${r.j.url}${r.j.error ? ' · ' + r.j.error : ''}` })
+    setBusy('')
+  }
+
+  const push = async (name: string) => {
+    setBusy('push-' + name); setMsg(null)
+    try {
+      const r = await fetch('/api/ai/backup/upload?name=' + encodeURIComponent(name), { method: 'POST', headers: { Authorization: pb.authStore.token! } })
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.message || `HTTP ${r.status}`)
+      setMsg(j.ok ? { ok: true, text: '已上传 ' + name } : { ok: false, text: `上传失败（HTTP ${j.status}）：${j.error || ''}` })
+    } catch (e: any) { setMsg({ ok: false, text: '上传失败：' + String(e?.message || e) }) }
+    setBusy('')
+  }
+
   if (!c) return <Card className="blk"><div className="mut" style={{ textAlign: 'center', padding: 18 }}>载入中…</div></Card>
   return (
     <>
-      <Card color={c.auto ? 'app-green' : 'brown'} className="blk">
-        <div className="li" style={{ border: 0 }}>
-          <button className={'tick' + (c.auto ? ' on' : '')} onClick={() => save({ auto: !c.auto })}>{c.auto ? '✓' : ''}</button>
-          <span className="grow"><b>每日自动备份</b>
-            <div className="mut">每天 03:30，本地留最近 14 份</div></span>
-          <Tag size="small" color={c.auto ? 'app-green' : 'brown'}>{c.auto ? '开' : '关'}</Tag>
+      <Card color="app-green" className="blk">
+        <Title size="small" variant="tab">完整备份</Title>
+        <div className="mut" style={{ margin: '8px 0', fontSize: 13, lineHeight: 1.8 }}>
+          打包整个 <b>pb_data</b>：数据库 + 所有上传的照片/头像，生成 PocketBase 备份 zip，
+          与面板 Settings → Backups 生成的文件一致，可以直接放回去恢复。
         </div>
-        <Divider style={{ margin: '10px 4px' }} />
-        <div style={{ fontSize: 13, lineHeight: 1.9 }}>
-          <div>上次备份：<b>{list.lastRun ? fmtDT(list.lastRun) : '尚未跑过'}</b></div>
-          {list.lastResult && <div className="mut">{list.lastResult}</div>}
-        </div>
-        <div style={{ marginTop: 10, display: 'flex', gap: 10 }}>
-          <Button type="primary" size="small" loading={busy === 'run'} onClick={() => call('run', '/api/ai/backup/run')}>立即备份</Button>
-        </div>
+        <Button type="primary" size="small" loading={busy === 'run'} onClick={run}>立即备份</Button>
         {msg && <div style={{ marginTop: 10, fontSize: 13, color: msg.ok ? '#3f8f4f' : '#d0455f' }}>{msg.ok ? '✓ ' : '✗ '}{msg.text}</div>}
       </Card>
 
       <Card color="app-blue" className="blk">
-        <Title size="small" variant="tab">异地备份 WebDAV（可选）</Title>
+        <Title size="small" variant="tab">WebDAV 异地备份（可选）</Title>
+        <div className="li" style={{ border: 0, paddingLeft: 0 }}>
+          <button className={'tick' + (c.auto ? ' on' : '')} onClick={() => save({ auto: !c.auto }, c.auto ? '已关闭自动上传' : '已开启自动上传')}>{c.auto ? '✓' : ''}</button>
+          <span className="grow"><b style={{ fontSize: 13.5 }}>备份后自动上传</b>
+            <div className="mut">每次点「立即备份」成功后，把 zip 推到下面的 WebDAV</div></span>
+        </div>
         <div className="aifrm" style={{ marginTop: 8 }}>
           <Input placeholder="地址，如 http://192.0.2.10:5005/站点备份" value={c.webdavUrl || ''} onChange={(e: any) => setC({ ...c, webdavUrl: e.target.value })} />
           <Input placeholder="账号（飞牛登录名）" value={c.webdavUser || ''} onChange={(e: any) => setC({ ...c, webdavUser: e.target.value })} />
           <Input type="password" placeholder={c.hasSaved ? '已保存过配置，留空则不改' : '密码（保存后不再显示）'} value={c.passDraft || ''} onChange={(e: any) => setC({ ...c, passDraft: e.target.value })} />
           <Input placeholder="远程子目录，如 /ai-couple" value={c.webdavDir || ''} onChange={(e: any) => setC({ ...c, webdavDir: e.target.value })} />
         </div>
-        <div className="mut" style={{ margin: '8px 0' }}>注意：飞牛 WebDAV 根目录不可写，
-          地址必须落在共享文件夹内；建议用 http:5005，别用自签 https:5006</div>
+        <div className="mut" style={{ margin: '8px 0' }}>飞牛 WebDAV 根目录不可写，地址要落在共享文件夹内；建议用 http:5005，别用自签 https:5006</div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <Button size="small" loading={busy === 'save'} onClick={() => save({ webdavUrl: c.webdavUrl, webdavUser: c.webdavUser, passDraft: c.passDraft, webdavDir: c.webdavDir })}>保存设置</Button>
-          <Button size="small" ghost loading={busy === 'dav'} onClick={() => call('dav', '/api/ai/backup/test-dav')}>测试连接</Button>
+          <Button size="small" ghost loading={busy === 'dav'} onClick={testDav}>测试连接</Button>
+        </div>
+        <div className="mut" style={{ marginTop: 10, fontSize: 12.5, lineHeight: 1.8 }}>
+          想每天自动备份：用系统计划任务跑 <code>node scripts/backup-webdav.mjs</code>（走 /api/backups + WebDAV，含旧备份清理）
         </div>
       </Card>
 
       <Card className="blk">
-        <Title size="small" variant="tab">备份文件（本地 {list.items.length}）</Title>
-        {list.items.map((f: any) => (
+        <Title size="small" variant="tab">备份文件（{files.length}）</Title>
+        {files.map((f: any) => (
           <div className="li" key={f.name}>
             <span className="dot">💾</span>
             <span className="grow"><b style={{ fontSize: 13 }}>{f.name}</b>
-              <div className="mut">{fmtDT(f.modified)} · {(f.size / 1024 / 1024).toFixed(1)}MB</div></span>
+              <div className="mut">{f.at} · {mb(f.size)}</div></span>
+            {c.webdavUrl && <Button size="small" ghost loading={busy === 'push-' + f.name} onClick={() => push(f.name)}>上传</Button>}
           </div>
         ))}
-        {!list.items.length && <div className="mut" style={{ textAlign: 'center', padding: 14 }}>还没有备份文件</div>}
+        {!files.length && <div className="mut" style={{ textAlign: 'center', padding: 14 }}>还没有备份文件，点上面的「立即备份」</div>}
       </Card>
     </>
   )
 }
 
-function More({ data, onOut, setModal, me, go, night, setNight, theme, setTheme }: any) {
+function More({ data, onOut, setModal, me, go, mode, theme, setTheme, imgQ, setImgQ }: any) {
+  const [rem, setRem] = useState(() => { try { return localStorage.getItem('ai-remind') === '1' } catch { return false } })
   const line = (ic: string, t: string, v: string, act?: () => void) => (
     <div className="li" onClick={act}>
       <span className="dot"><Ic v={ic} /></span>
@@ -545,22 +722,79 @@ function More({ data, onOut, setModal, me, go, night, setNight, theme, setTheme 
       <span className="mut">{v}</span><span className="mut">›</span>
     </div>
   )
+  const askRemind = async () => {
+    if (!('Notification' in window)) { showToast('这个浏览器不支持通知'); return }
+    try {
+      const p = await Notification.requestPermission()
+      localStorage.setItem('ai-remind', p === 'granted' ? '1' : '0')
+      setRem(p === 'granted')
+      showToast(p === 'granted' ? '已开启，每天会提醒一次纪念日和打卡' : '没拿到通知权限')
+    } catch (e) { quiet(e) }
+  }
+  const exportAll = async () => {
+    const keys = ['settings', 'members', 'diaries', 'albums', 'wishes', 'moments', 'checkins', 'ckrecords', 'messages', 'comments', 'gmk', 'c4', 'fly', 'gmkr', 'c4r', 'flyr']
+    const out: any = { v: 'v0.57', at: new Date().toISOString() }
+    for (const k of keys) {
+      try {
+        const rows = await pb.collection(k).getFullList()
+        // tokenKey 是登录态凭据，不写进备份文件
+        out[k] = k === 'members' ? rows.map((r: any) => { const c = { ...r }; delete c.tokenKey; return c }) : rows
+      } catch { out[k] = [] }
+    }
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' }))
+    a.download = `lovesite-${today()}.json`
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000)
+    showToast('已导出，备份文件在下载里')
+  }
+  const importAll = async (f: File) => {
+    let n = 0
+    try {
+      const j = JSON.parse(await f.text())
+      for (const k of Object.keys(j)) {
+        if (k === 'v' || k === 'at' || !Array.isArray(j[k])) continue
+        for (const raw of j[k]) {
+          // 系统字段只读，带上去会 400：先剥掉，id 单独留着做 upsert
+          const r: any = { ...raw }
+          delete r.collectionId; delete r.collectionName; delete r.created; delete r.updated; delete r.tokenKey
+          const id = r.id; delete r.id
+          try { await pb.collection(k).update(id, r); n++ }
+          catch { try { await pb.collection(k).create(id ? { ...r, id } : r); n++ } catch { } }
+        }
+      }
+      showToast(`已导入 ${n} 条数据`)
+      setTimeout(() => location.reload(), 600)
+    } catch (e) { quiet(e) }
+  }
   return (
     <>
       <Card className="blk"><Title size="small" variant="tab">我们</Title>
         {line('👤', '我的资料', me.nickName || me.username || '', () => setModal('profile'))}
         {line('💑', '关于我们', data.setting?.names || '未设置', () => setModal('about'))}
       </Card>
-      <Card color="app-yellow" className="blk"><Title size="small" variant="tab">设置</Title>
-        {line('🏷️', '站点名称', data.setting?.siteName || '情侣小站', () => setModal('sitename'))}
-{line('layout', '功能卡片', '排列首页宫格 · 添加链接', () => go('tilemgr'))}
+      <Card color="app-yellow" className="blk"><Title size="small" variant="tab">外观</Title>
         {line('palette', '配色主题', theme === 'island' ? '官方原版' : '玫瑰奶油', () => setTheme(theme === 'island' ? 'rose' : 'island'))}
-        {line('🌙', '深色模式', night ? '已开启' : '已关闭', () => setNight((x: boolean) => !x))}
-        {line('🔐', '私密口令', data.setting?.lockOn ? '已启用' : '未启用', () => setModal('lockSet'))}
-        {line('💾', '数据备份', '', () => go('backup'))}
-        {line('🧊', '刷新数据', '', () => location.reload())}
+        {line(mode === 'dark' ? '🌙' : mode === 'auto' ? '🖥️' : '☀️', '外观模式', mode === 'dark' ? '深色' : mode === 'auto' ? '跟随系统' : '浅色', () => setModal('appearance'))}
+        {line('🖼️', '图片质量', imgQ === 'hd' ? '高清' : '省流', () => setImgQ((x: string) => (x === 'hd' ? 'lite' : 'hd')))}
       </Card>
-      <Card color="warm-peach-pink" className="blk" style={{ textAlign: 'center' }}>
+      <Card color="app-teal" className="blk"><Title size="small" variant="tab">功能</Title>
+        {line('🏷️', '站点名称', data.setting?.siteName || '情侣小站', () => setModal('sitename'))}
+        {line('layout', '功能卡片', '排列首页宫格 · 添加链接', () => go('tilemgr'))}
+        {line('🔐', '私密口令', data.setting?.lockOn ? '已启用' : '未启用', () => setModal('lockSet'))}
+        {line('🔔', '每日提醒', rem ? '已开启' : '未开启', askRemind)}
+      </Card>
+      <Card color="warm-peach-pink" className="blk"><Title size="small" variant="tab">数据</Title>
+        {line('💾', '数据备份', 'WebDAV 自动备份', () => go('backup'))}
+        {line('📤', '导出数据', 'JSON · 16 个集合', exportAll)}
+        {line('📥', '导入数据', '从 JSON 恢复 · 按 id 覆盖', () => { const i = document.createElement('input'); i.type = 'file'; i.accept = 'application/json'; i.onchange = () => { const f = i.files?.[0]; if (f) importAll(f) }; i.click() })}
+        {line('🧊', '刷新数据', '', () => location.reload())}
+        <div className="mut" style={{ fontSize: 12, lineHeight: 1.75, marginTop: 8, padding: '0 2px' }}>
+          导出的是 UTF-8 JSON 备份：<b>v</b>（版本）/ <b>at</b>（导出时间）+ settings、members、diaries、albums… 共 16 个集合的原始记录数组。
+          照片只记文件名，不打包图片本体 —— 换机器请搬 PocketBase 的 <b>pb_data</b> 目录。
+        </div>
+      </Card>
+      <Card className="blk" style={{ textAlign: 'center' }}>
         <div className="mut" style={{ marginBottom: 10 }}>当前登录：{me.nickName || me.username}</div>
         <Button danger onClick={onOut}>退出登录</Button>
         <div className="mut" style={{ marginTop: 12, fontSize: 11 }}>情侣小站 · PocketBase + React + Animal Island UI · v0.57</div>

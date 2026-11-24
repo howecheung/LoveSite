@@ -8,3 +8,8 @@ _init-pb.cjs
 pb.log
 CREDENTIALS.txt
 *.env
+
+# local env (Vite)
+.env.local
+.env.*.local
+app/.env.local
