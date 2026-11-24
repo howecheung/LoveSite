@@ -2,7 +2,7 @@
 
 本文件记录本项目自身的版本变化。PocketBase 官方的更新日志已存档在 [`docs/POCKETBASE_CHANGELOG.md`](docs/POCKETBASE_CHANGELOG.md)。
 
-## 未发布
+## v0.0.5
 
 - 备份删除白名单兼容 PocketBase 面板生成的 `pb_backup_*.zip`：这类文件以前会出现在列表里但删不掉（按钮永远提示「备份文件名不合法」），现在能正常识别时间并删除
 - `scripts/backup-webdav.mjs` 上传 WebDAV 成功后默认删除 PB 侧的中间文件，避免 `pb_data/backups` 无限累积（想留本地副本加 `PB_KEEP_LOCAL=1`）
