@@ -55,7 +55,7 @@ function Login({ onOK }: any) {
     try { await pb.collection('members').authWithPassword(id, pw); onOK() } catch { setErr('账号或密令不对，再试试') }
   }
   return (
-    <Background type="dots-pink" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, position: 'relative', overflow: 'hidden' }}>
+    <Background type="dots-yellow-green" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, position: 'relative', overflow: 'hidden' }}>
       {/* 岛上飘着的云和星光 */}
       <motion.span className="lg-drift c1" animate={{ y: [0, -12, 0], x: [0, 6, 0] }} transition={{ duration: 9, repeat: Infinity, ease: 'easeInOut' }}>
         <Ic v="☁️" size={44} />
@@ -71,8 +71,8 @@ function Login({ onOK }: any) {
         <span className="lg-leaf l" />
         <span className="lg-leaf r" />
         <Card color="default" className="lgcard">
-          <div className="lg-badge"><Ic v="couple" size={30} /></div>
-          <div className="lg-title"><Title size="middle" color="app-pink" variant="ribbon">情侣小站</Title></div>
+          <div className="lg-mark"><Ic v="couple" size={34} /></div>
+          <div className="lg-title"><Title size="middle" color="app-green" variant="ribbon">LoveSite</Title></div>
           <div className="lg-sub">爱是相伴，此心安处是吾乡</div>
           <div className="aifrm" style={{ marginTop: 18 }}>
             <Input placeholder="账号" value={u} onChange={(e: any) => setU(e.target.value)} />

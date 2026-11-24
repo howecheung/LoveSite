@@ -525,10 +525,8 @@ span[class*="animal-wrapper"] > input { width: 100% !important; }
 /* ---------- 登录页：小岛告示牌 ---------- */
 .lgwrap { position: relative; width: 100%; max-width: 366px; }
 .lgcard { position: relative; border-radius: 28px; padding: 26px 22px 18px; text-align: center;
-  box-shadow: 0 22px 48px -22px rgba(150, 70, 95, .45), 0 0 0 3px rgba(255, 255, 255, .5) inset; }
-.lg-badge { width: 62px; height: 62px; margin: 0 auto 8px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
-  background: radial-gradient(circle at 34% 28%, #fff, #ffd7e3 72%);
-  box-shadow: 0 8px 16px -8px rgba(196, 90, 120, .55), 0 0 0 4px rgba(255, 255, 255, .55); }
+  box-shadow: 0 22px 48px -26px rgba(60, 90, 40, .5), 0 0 0 3px rgba(255, 255, 255, .5) inset; }
+.lg-mark { display: flex; justify-content: center; align-items: center; margin: 2px 0 4px; color: var(--accent); }
 .lg-title { display: flex; justify-content: center; }
 .lg-sub { color: var(--ink3); font-size: 12.5px; margin-top: 6px; letter-spacing: .2px; }
 .lg-err { color: var(--danger); font-size: 12.5px; text-align: left; padding-left: 2px; }
