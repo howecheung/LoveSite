@@ -652,12 +652,21 @@ function BackupPage({ reload }: any) {
 
   const push = async (name: string) => {
     setBusy('push-' + name); setMsg(null)
-    try {
-      const r = await fetch('/api/ai/backup/upload?name=' + encodeURIComponent(name), { method: 'POST', headers: { Authorization: pb.authStore.token! } })
-      const j = await r.json()
-      if (!r.ok) throw new Error(j.message || `HTTP ${r.status}`)
-      setMsg(j.ok ? { ok: true, text: '已上传 ' + name } : { ok: false, text: `上传失败（HTTP ${j.status}）：${j.error || ''}` })
-    } catch (e: any) { setMsg({ ok: false, text: '上传失败：' + String(e?.message || e) }) }
+    const r = await call('/api/ai/backup/upload?name=' + encodeURIComponent(name), 'POST')
+    if (!r.ok) setMsg({ ok: false, text: '上传失败：' + r.text })
+    else setMsg(r.j.ok
+      ? { ok: true, text: '已上传 ' + name }
+      : { ok: false, text: `上传失败（HTTP ${r.j.status}）：${r.j.error || ''}` })
+    setBusy('')
+  }
+
+  // 删除备份：二次确认由 confirm 拦一道，接口再校验文件名
+  const del = async (name: string) => {
+    if (!confirm(`确定删除备份 ${name}？\n\n删除后无法从页面恢复，建议先确认已经上传到 WebDAV 或另存。`)) return
+    setBusy('del-' + name); setMsg(null)
+    const r = await call('/api/ai/backup/delete?name=' + encodeURIComponent(name), 'POST')
+    if (!r.ok) setMsg({ ok: false, text: '删除失败：' + r.text })
+    else { setMsg({ ok: true, text: '已删除 ' + name }); list() }
     setBusy('')
   }
 
@@ -704,7 +713,10 @@ function BackupPage({ reload }: any) {
             <span className="dot">💾</span>
             <span className="grow"><b style={{ fontSize: 13 }}>{f.name}</b>
               <div className="mut">{f.at} · {mb(f.size)}</div></span>
-            {c.webdavUrl && <Button size="small" ghost loading={busy === 'push-' + f.name} onClick={() => push(f.name)}>上传</Button>}
+            <div className="bkacts">
+              {c.webdavUrl && <Button size="small" ghost loading={busy === 'push-' + f.name} onClick={() => push(f.name)}>上传</Button>}
+              <Button size="small" danger loading={busy === 'del-' + f.name} onClick={() => del(f.name)}>删除</Button>
+            </div>
           </div>
         ))}
         {!files.length && <div className="mut" style={{ textAlign: 'center', padding: 14 }}>还没有备份文件，点上面的「立即备份」</div>}

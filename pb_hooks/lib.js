@@ -114,4 +114,28 @@ function makeBackup(name, ctx) {
   }
 }
 
-module.exports = { b64, stampName, bkPath, fileSize, listBackups, davCfg, davCall, makeBackup }
+// 只允许删除本程序生成的文件名，挡掉 ../ 之类的路径穿越
+const BK_NAME = /^(?:lovesite-backup-\d{8}-\d{6}|ai-\d{8}-\d{6}|ai-\d{14})\.zip$/
+
+function removeBackup(name) {
+  if (!BK_NAME.test(name)) return { ok: false, error: "备份文件名不合法" }
+  const p = bkPath(name)
+  try {
+    $os.stat(p)
+  } catch (e) {
+    return { ok: false, error: "备份不存在" }
+  }
+  try {
+    $os.remove(p)
+  } catch (e) {
+    return { ok: false, error: String(e) }
+  }
+  try {
+    const meta = p + ".attrs"
+    $os.stat(meta)
+    $os.remove(meta)
+  } catch (e) {}
+  return { ok: true }
+}
+
+module.exports = { b64, stampName, bkPath, fileSize, listBackups, removeBackup, davCfg, davCall, makeBackup }

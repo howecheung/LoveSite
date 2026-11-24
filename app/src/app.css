@@ -521,6 +521,14 @@ span[class*="animal-wrapper"] > input { width: 100% !important; }
 /* ===== footprint map ===== */
 .fpbar { display: flex; align-items: center; gap: 8px; padding: 10px 12px; }
 .fpbox { height: min(62vh, 600px); width: 100%; background: #dfeaf3; }
+/* 手机端：足迹页不渲染底部导航，地图按视口铺满，别让下沿被压住 */
+@media (max-width: 899px) {
+  .fpbox { height: calc(100vh - 168px); height: calc(100dvh - 168px); min-height: 300px; }
+}
+@media (min-width: 900px) {
+  .fpbox { height: min(72vh, 720px); }
+}
+.bkacts { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
 .fpmk { background: transparent; border: 0; }
 .fpmk-in { display: block; width: 58px; text-align: center; }
 .fpmk-in img { width: 52px; height: 52px; object-fit: cover; border-radius: 14px; border: 3px solid #fff; box-shadow: 0 4px 12px rgba(0,0,0,.28); background: #fff; }

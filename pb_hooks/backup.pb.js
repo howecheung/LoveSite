@@ -54,12 +54,25 @@ routerAdd("POST", "/api/ai/backup/test-dav", (c) => {
 routerAdd("POST", "/api/ai/backup/upload", (c) => {
   try {
     const L = require(`${__hooks}/lib.js`)
-    const name = String(c.queryParam("name") || "")
+    const name = String(c.request.url.query().get("name") || "")
     if (!name || name.indexOf("..") >= 0) return c.json(400, { message: "备份文件名不合法" })
     const cfg = L.davCfg()
     if (!cfg.url) return c.json(400, { message: "还没配置 WebDAV 地址" })
     const r = L.davCall(cfg, "PUT", name, { "Content-Type": "application/zip" }, $os.readFile(L.bkPath(name)))
     return c.json(200, { ok: r.ok, status: r.status, error: r.error })
+  } catch (e) {
+    return c.json(500, { message: String(e) })
+  }
+}, auth())
+
+// 删除本地备份；前端点删除后会先 confirm 一次
+routerAdd("POST", "/api/ai/backup/delete", (c) => {
+  try {
+    const L = require(`${__hooks}/lib.js`)
+    const name = String(c.request.url.query().get("name") || "")
+    const r = L.removeBackup(name)
+    if (!r.ok) return c.json(400, { message: r.error })
+    return c.json(200, { ok: true, name: name })
   } catch (e) {
     return c.json(500, { message: String(e) })
   }

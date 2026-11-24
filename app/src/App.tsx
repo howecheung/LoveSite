@@ -201,7 +201,7 @@ function Site({ onOut }: any) {
           ))}
         </Card>
 
-        <div className="main">
+        <div className="main" style={route === 'footprint' ? { paddingBottom: 18 } : undefined}>
           <div className="hrow">
             {!MAINR.includes(route) && <motion.button {...tapSmall} className="backbtn" onClick={back}><Ic v="arrowL" size={14} /> 返回</motion.button>}
             {route === 'home' && <span className="dchip" onClick={() => go('home')}><Ic v="❤️" size={11} w="fill" /> 第 {data.setting ? daysSince(data.setting.startDate) : 0} 天</span>}
@@ -282,11 +282,12 @@ function Site({ onOut }: any) {
         </div>
       </div>
 
-      <div className="tabbar desk-hide">
+      {/* 足迹页是沉浸式地图，底部导航会压住地图下沿，这里直接不渲染 */}
+      {route !== 'footprint' && <div className="tabbar desk-hide">
         {NAV.filter(n=>n.k==='home'||n.k==='diary').map((n) => <TabBtn key={n.k} n={n} on={route === n.k} go={go} />)}
         <button className="plus" onClick={() => setModal('diary')}><Ic v="➕" size={26} w="fill" /></button>
         {NAV.filter(n=>n.k==='album'||n.k==='more').map((n) => <TabBtn key={n.k} n={n} on={route === n.k} go={go} />)}
-      </div>
+      </div>}
 
       {modal && <ModalCard kind={modal} rec={rec} data={data} me={me} close={() => { setModal(null); setRec(null) }} reload={load} go={go} setUnlocked={setUnlocked} mode={mode} setMode={setMode} />}
     </Background>
