@@ -53,6 +53,19 @@ async function compressImg(fl: File): Promise<File> {
 }
 
 // 真实提醒：今天还没打卡、三五天内的纪念日、对方最近发的内容
+const NOTICE_KEY = 'ai-notice-clear'
+export const APP_VER = 'v0.0.3'
+const noticeCleared = (id: string) => {
+  try { const m = JSON.parse(localStorage.getItem(NOTICE_KEY) || '{}'); return m[id] === today() } catch { return false }
+}
+export function clearNotices(list: any[]) {
+  try {
+    const m: any = JSON.parse(localStorage.getItem(NOTICE_KEY) || '{}')
+    const t = today()
+    for (const n of list) m[n.id] = t
+    localStorage.setItem(NOTICE_KEY, JSON.stringify(m))
+  } catch { /* 隐私模式下 localStorage 不可写，忽略 */ }
+}
 function buildNotices(data: any, me: any) {
   const out: any[] = []
   const t = today()
@@ -70,7 +83,7 @@ function buildNotices(data: any, me: any) {
   const other = (me?.id ? (data?.diaries || []).filter((d: any) => d.member && d.member !== myId) : [])
   const recent = other.filter((d: any) => Date.now() - new Date(d.created).getTime() < 3 * 86400000)
   if (recent.length) out.push({ id: 'di', ic: '📔', t: `TA 最近发了 ${recent.length} 篇日常`, s: recent[0].title || recent[0].text?.slice(0, 18) || '', go: 'diary' })
-  return out
+  return out.filter((n) => !noticeCleared(n.id))
 }
 
 // 天数滚动计数：easeOutExpo（与官方 CountUp 同曲线），输出普通 <b> 保持行内排版

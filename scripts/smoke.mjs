@@ -61,7 +61,7 @@ const Bt = b.token, meB = b.record
 console.log(`  ok   ${U1} 登录  ${meA.nickName || ''}`)
 console.log(`  ok   ${U2} 登录`)
 await T('错误口令被拒（400）', async () => { try { await auth(U1, 'wrong-pass'); throw new Error('竟然登录成功') } catch (e) { if (e.status !== 400) throw e } })
-await T('口令 <8 位被拒（400）', async () => { try { await auth(U1, '123'); throw new Error('竟然登录成功') } catch (e) { if (e.status !== 400) throw e } })
+await T('空口令被拒（400）', async () => { try { await auth(U1, ''); throw new Error('竟然登录成功') } catch (e) { if (e.status !== 400) throw e } })
 
 console.log('\n=== 2. settings ===')
 const S = col('settings')

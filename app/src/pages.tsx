@@ -8,7 +8,7 @@ import { pb, quiet, showToast } from './core'
 import { readExif, nextOccurLunar } from './utils'
 import {
   exifLine, lmdText, fmtDT, dayStr, today, daysSince, nextOccur,
-  MOOD_CN, MOOD_IC, MOOD_TAG, compressImg,
+  MOOD_CN, MOOD_IC, MOOD_TAG, compressImg, APP_VER,
 } from './shared'
 
 function Av({ rec, size = 34, fb }: any) {
@@ -745,7 +745,7 @@ function More({ data, onOut, setModal, me, go, mode, theme, setTheme, imgQ, setI
   }
   const exportAll = async () => {
     const keys = ['settings', 'members', 'diaries', 'albums', 'wishes', 'moments', 'checkins', 'ckrecords', 'messages', 'comments', 'gmk', 'c4', 'fly', 'gmkr', 'c4r', 'flyr']
-    const out: any = { v: 'v0.57', at: new Date().toISOString() }
+    const out: any = { v: APP_VER, at: new Date().toISOString() }
     for (const k of keys) {
       try {
         const rows = await pb.collection(k).getFullList()
@@ -805,7 +805,7 @@ function More({ data, onOut, setModal, me, go, mode, theme, setTheme, imgQ, setI
       <Card className="blk" style={{ textAlign: 'center' }}>
         <div className="mut" style={{ marginBottom: 10 }}>当前登录：{me.nickName || me.username}</div>
         <Button danger onClick={onOut}>退出登录</Button>
-        <div className="mut" style={{ marginTop: 12, fontSize: 11 }}>情侣小站 · PocketBase + React + Animal Island UI · v0.57</div>
+        <div className="mut" style={{ marginTop: 12, fontSize: 11 }}>情侣小站 · PocketBase + React + Animal Island UI · {APP_VER}</div>
       </Card>
     </>
   )

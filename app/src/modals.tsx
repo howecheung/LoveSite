@@ -5,7 +5,7 @@ import { pb, showToast } from './core'
 import { Ic } from './Icons'
 import { sha256, readExif, hashPwd, newSalt } from './utils'
 import { Av } from './pages'
-import { fmtDT, dayStr, today, daysSince, MOODS, MOOD_CN, MOOD_IC, MOOD_TAG, compressImg, buildNotices } from './shared'
+import { fmtDT, dayStr, today, daysSince, MOODS, MOOD_CN, MOOD_IC, MOOD_TAG, compressImg, buildNotices, clearNotices } from './shared'
 
 function ModalCard({ kind, rec, data, me, close, reload, go, setUnlocked, mode, setMode }: any) {
   const [f, setF] = useState<any>({})
@@ -153,15 +153,21 @@ function ModalCard({ kind, rec, data, me, close, reload, go, setUnlocked, mode, 
         </div>
         {f.msg && <div style={{ color: 'var(--danger)', fontSize: 13, marginTop: 8 }}>{f.msg}</div>}
       </>}
-      {kind === 'notice' && <>
-        {buildNotices(data, me).map((n: any) => (
-          <div className="li" key={n.id} style={{ cursor: 'pointer' }} onClick={() => { close(); go(n.go) }}>
-            <span className="dot"><Ic v={n.ic} /></span>
-            <span className="grow"><b>{n.t}</b>{n.s ? <div className="mut">{n.s}</div> : null}</span>
-            <span className="mut">›</span>
-          </div>))}
-        {!buildNotices(data, me).length && <div className="mut" style={{ textAlign: 'center', padding: 18 }}>今天没有特别的事，去写点日常吧 🌿</div>}
-      </>}
+      {kind === 'notice' && (() => {
+        const list = buildNotices(data, me)
+        return <>
+          {list.map((n: any) => (
+            <div className="li" key={n.id} style={{ cursor: 'pointer' }} onClick={() => { close(); go(n.go) }}>
+              <span className="dot"><Ic v={n.ic} /></span>
+              <span className="grow"><b>{n.t}</b>{n.s ? <div className="mut">{n.s}</div> : null}</span>
+              <span className="mut">›</span>
+            </div>))}
+          {!list.length && <div className="mut" style={{ textAlign: 'center', padding: 18 }}>今天没有特别的事，去写点日常吧 🌿</div>}
+          {!!list.length && <div style={{ marginTop: 14 }}>
+            <Button block ghost onClick={() => { clearNotices(list); reload(); close() }}>清除这些消息</Button>
+          </div>}
+        </>
+      })()}
       {kind === 'days' && <div style={{ textAlign: 'center', padding: '8px 0' }}>
         <b style={{ fontSize: 44, color: 'var(--accent)' }}>{data.setting ? daysSince(data.setting.startDate) : 0}</b>
         <div className="mut">起始日 {dayStr(data.setting?.startDate) || '未设置'}，可在「关于我们」修改</div>
