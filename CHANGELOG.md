@@ -2,6 +2,11 @@
 
 本文件记录本项目自身的版本变化。PocketBase 官方的更新日志已存档在 [`docs/POCKETBASE_CHANGELOG.md`](docs/POCKETBASE_CHANGELOG.md)。
 
+## 未发布
+
+- 备份删除白名单兼容 PocketBase 面板生成的 `pb_backup_*.zip`：这类文件以前会出现在列表里但删不掉（按钮永远提示「备份文件名不合法」），现在能正常识别时间并删除
+- `scripts/backup-webdav.mjs` 上传 WebDAV 成功后默认删除 PB 侧的中间文件，避免 `pb_data/backups` 无限累积（想留本地副本加 `PB_KEEP_LOCAL=1`）
+
 ## v0.0.4
 
 - PWA 缓存版本改为**构建时注入**：`app/public/sw.js` 里写 `__SW_VERSION__` 占位，`vite.config.ts` 构建后替换成「版本-构建时间戳」，不再手改；每次构建都会换缓存名，客户端升级后旧缓存自动清掉

@@ -61,9 +61,10 @@ function listBackups() {
     .sort((a, b) => (a.name < b.name ? 1 : -1))
 }
 
-// lovesite-backup-20261124-222617.zip → 2026-11-24 22:26:17（兼容旧的 ai- 前缀）
+// lovesite-backup-20261124-222617.zip → 2026-11-24 22:26:17（兼容旧 ai- 前缀与 PB 面板默认名 pb_backup_*）
 function prettyAt(name) {
-  const m = /^(?:lovesite-backup-|ai-)(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})\.zip$/.exec(name)
+  let m = /^(?:lovesite-backup-|ai-)(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})\.zip$/.exec(name)
+  if (!m) m = /^pb_backup_[A-Za-z0-9_-]*?(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})\.zip$/.exec(name)
   if (!m) return ""
   return m[1] + "-" + m[2] + "-" + m[3] + " " + m[4] + ":" + m[5] + ":" + m[6]
 }
@@ -114,8 +115,10 @@ function makeBackup(name, ctx) {
   }
 }
 
-// 只允许删除本程序生成的文件名，挡掉 ../ 之类的路径穿越
-const BK_NAME = /^(?:lovesite-backup-\d{8}-\d{6}|ai-\d{8}-\d{6}|ai-\d{14})\.zip$/
+// 只允许删除本程序生成或 PocketBase 面板生成的备份名，挡掉 ../ 之类的路径穿越。
+// pb_backup_* 是 PB 面板 /api/backups 不传 name 时的默认命名（历史残留、外部工具生成），
+// 只允许字母数字下划线连字符，不含点与斜杠。
+const BK_NAME = /^(?:lovesite-backup-\d{8}-\d{6}|ai-\d{8}-\d{6}|ai-\d{14}|pb_backup_[A-Za-z0-9_-]+)\.zip$/
 
 function removeBackup(name) {
   if (!BK_NAME.test(name)) return { ok: false, error: "备份文件名不合法" }

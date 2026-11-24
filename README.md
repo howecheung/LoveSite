@@ -58,6 +58,8 @@ cd app && npm install && npm run build   # 产物在 app/dist
 > 自动备份没有做进 PocketBase 的 cron：0.40 的 JSVM 里 `createBackup` 必须传 request context，cron 里没有（传 null 会 panic），所以定时任务交给系统计划任务跑上面的脚本更稳。
 >
 > 备份文件名固定为 `lovesite-backup-YYYYMMDD-HHmmss.zip`（本地时间）；早期生成的 `ai-YYYYMMDD-HHmmss.zip` 仍能被识别和清理。
+>
+> PocketBase 面板「Backups」不填名字时生成的 `pb_backup_*.zip` 也会出现在页面列表里、可以直接删除（这些通常是面板手工备份或外部工具留下的残留）。脚本上传 WebDAV 成功后默认会删掉 PB 侧的中间文件，想留本地副本就加 `PB_KEEP_LOCAL=1`。
 
 
 ## 目录结构

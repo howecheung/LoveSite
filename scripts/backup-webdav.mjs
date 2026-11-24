@@ -59,6 +59,16 @@ async function main() {
   })
   if (!ur.ok) die('上传 WebDAV 失败 ' + ur.status)
 
+  // 4.1) 远端已落地，删掉 PB 侧的中间文件，避免 backups 目录无限累积。
+  // 想同时留本地副本就跳过这步（或把 PB_KEEP_LOCAL 设为 1）。
+  let cleaned = false
+  if (process.env.PB_KEEP_LOCAL !== '1') {
+    try {
+      const cr = await fetch(PB + '/api/backups/' + encodeURIComponent(name), { method: 'DELETE', headers: { Authorization: token } })
+      cleaned = cr.ok
+    } catch (e) {}
+  }
+
   // 5) 清理远端旧备份（只动本项目的备份，兼容旧的 ai- 前缀）
   let removed = 0
   try {
@@ -82,7 +92,7 @@ async function main() {
     console.warn('清理旧备份跳过：' + e.message)
   }
 
-  console.log(`✓ ${name}  ${(buf.length / 1024 / 1024).toFixed(2)} MB  上传成功，清理旧备份 ${removed} 个`)
+  console.log(`✓ ${name}  ${(buf.length / 1024 / 1024).toFixed(2)} MB  上传成功，清理旧备份 ${removed} 个${cleaned ? '，已删除 PB 侧中间文件' : ''}`)
 }
 
 main().catch((e) => die(e.message))
