@@ -13,3 +13,4 @@ CREDENTIALS.txt
 .env.local
 .env.*.local
 app/.env.local
+_shots/

@@ -521,6 +521,35 @@ span[class*="animal-wrapper"] > input { width: 100% !important; }
 /* ===== footprint map ===== */
 .fpbar { display: flex; align-items: center; gap: 8px; padding: 10px 12px; }
 .fpbox { height: min(62vh, 600px); width: 100%; background: #dfeaf3; }
+
+/* ---------- 登录页：小岛告示牌 ---------- */
+.lgwrap { position: relative; width: 100%; max-width: 366px; }
+.lgcard { position: relative; border-radius: 28px; padding: 26px 22px 18px; text-align: center;
+  box-shadow: 0 22px 48px -22px rgba(150, 70, 95, .45), 0 0 0 3px rgba(255, 255, 255, .5) inset; }
+.lg-badge { width: 62px; height: 62px; margin: 0 auto 8px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(circle at 34% 28%, #fff, #ffd7e3 72%);
+  box-shadow: 0 8px 16px -8px rgba(196, 90, 120, .55), 0 0 0 4px rgba(255, 255, 255, .55); }
+.lg-title { display: flex; justify-content: center; }
+.lg-sub { color: var(--ink3); font-size: 12.5px; margin-top: 6px; letter-spacing: .2px; }
+.lg-err { color: var(--danger); font-size: 12.5px; text-align: left; padding-left: 2px; }
+.lg-leaf { position: absolute; width: 24px; height: 24px; z-index: 2;
+  background: linear-gradient(140deg, #a8dd7c, #63b04a); border-radius: 0 100% 0 100%; opacity: .92; }
+.lg-leaf.l { left: -9px; top: 30px; transform: rotate(-28deg); }
+.lg-leaf.r { right: -7px; top: 134px; transform: rotate(202deg) scale(.78); }
+.lg-isle { margin: 16px -22px 0; height: 20px; position: relative; overflow: hidden; }
+.lg-isle i { position: absolute; bottom: 0; height: 20px; border-radius: 50% 50% 0 0 / 100% 100% 0 0; background: #cfe8b0; }
+.lg-isle i:nth-child(1) { left: 6%; width: 36%; }
+.lg-isle i:nth-child(2) { left: 32%; width: 42%; height: 24px; background: #b8dd93; }
+.lg-isle i:nth-child(3) { left: 64%; width: 32%; }
+.lg-foot { color: var(--ink3); font-size: 11px; margin-top: 10px; letter-spacing: 1px; opacity: .8; }
+.lg-drift { position: absolute; pointer-events: none; color: rgba(255, 255, 255, .88); }
+.lg-drift.c1 { left: 9%; top: 13%; }
+.lg-drift.c2 { right: 11%; top: 21%; }
+.lg-drift.s1 { right: 17%; bottom: 17%; }
+@media (max-width: 430px) {
+  .lg-drift.c1, .lg-drift.c2, .lg-drift.s1 { opacity: .55 }
+  .lgcard { padding: 22px 18px 16px; }
+}
 /* 手机端：足迹页不渲染底部导航，地图按视口铺满，别让下沿被压住 */
 @media (max-width: 899px) {
   .fpbox { height: calc(100vh - 168px); height: calc(100dvh - 168px); min-height: 300px; }

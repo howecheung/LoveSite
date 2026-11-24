@@ -104,7 +104,7 @@ export function PageTileMgr({ data }: any) {
           <motion.span {...tapSmall} className="miniact" onClick={() => mv(i, -1)}><Ic v="up" size={13} /></motion.span>
           <motion.span {...tapSmall} className="miniact" onClick={() => mv(i, 1)}><Ic v="down" size={13} /></motion.span>
           <motion.span {...tapSmall} className="miniact" onClick={() => openEdit(t, i)}><Ic v="edit" size={13} /></motion.span>
-          <motion.span {...tapSmall} className="miniact del" onClick={() => rm(i)}><Ic v="del" size={13} /></motion.span>
+          <motion.span {...tapSmall} className="miniact" title="隐藏" onClick={() => rm(i)}><Ic v="hide" size={13} /></motion.span>
         </div>
       ))}
     </Card>

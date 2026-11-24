@@ -801,10 +801,6 @@ function More({ data, onOut, setModal, me, go, mode, theme, setTheme, imgQ, setI
         {line('📤', '导出数据', 'JSON · 16 个集合', exportAll)}
         {line('📥', '导入数据', '从 JSON 恢复 · 按 id 覆盖', () => { const i = document.createElement('input'); i.type = 'file'; i.accept = 'application/json'; i.onchange = () => { const f = i.files?.[0]; if (f) importAll(f) }; i.click() })}
         {line('🧊', '刷新数据', '', () => location.reload())}
-        <div className="mut" style={{ fontSize: 12, lineHeight: 1.75, marginTop: 8, padding: '0 2px' }}>
-          导出的是 UTF-8 JSON 备份：<b>v</b>（版本）/ <b>at</b>（导出时间）+ settings、members、diaries、albums… 共 16 个集合的原始记录数组。
-          照片只记文件名，不打包图片本体 —— 换机器请搬 PocketBase 的 <b>pb_data</b> 目录。
-        </div>
       </Card>
       <Card className="blk" style={{ textAlign: 'center' }}>
         <div className="mut" style={{ marginBottom: 10 }}>当前登录：{me.nickName || me.username}</div>

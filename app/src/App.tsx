@@ -55,20 +55,35 @@ function Login({ onOK }: any) {
     try { await pb.collection('members').authWithPassword(id, pw); onOK() } catch { setErr('账号或密令不对，再试试') }
   }
   return (
-    <Background type="dots-pink" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <Card color="app-pink" style={{ width: '100%', maxWidth: 370, padding: 26 }}>
-        <div style={{ textAlign: 'center' }}><Ic v="couple" size={42} /></div>
-        <div style={{ textAlign: 'center', margin: '6px 0 2px' }}>
-          <Title size="middle" color="app-pink" variant="ribbon">情侣小站</Title>
-        </div>
-        <div style={{ textAlign: 'center', color: 'var(--ink3)', fontSize: 13, marginBottom: 18 }}>爱是相伴，此心安处是吾乡</div>
-        <div className="aifrm">
-          <Input placeholder="账号（如 zwh / mm）" value={u} onChange={(e: any) => setU(e.target.value)} />
-          <Input type="password" placeholder="密令" value={p} onChange={(e: any) => setP(e.target.value)} onKeyDown={(e: any) => { if (e.key === 'Enter') go() }} />
-          {err && <div style={{ color: 'var(--danger)', fontSize: 13 }}>{err}</div>}
-          <Button type="primary" block onClick={go}>进入小站</Button>
-        </div>
-      </Card>
+    <Background type="dots-pink" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, position: 'relative', overflow: 'hidden' }}>
+      {/* 岛上飘着的云和星光 */}
+      <motion.span className="lg-drift c1" animate={{ y: [0, -12, 0], x: [0, 6, 0] }} transition={{ duration: 9, repeat: Infinity, ease: 'easeInOut' }}>
+        <Ic v="☁️" size={44} />
+      </motion.span>
+      <motion.span className="lg-drift c2" animate={{ y: [0, 10, 0] }} transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut' }}>
+        <Ic v="☁️" size={26} />
+      </motion.span>
+      <motion.span className="lg-drift s1" animate={{ rotate: [0, 16, 0], y: [0, -6, 0] }} transition={{ duration: 6, repeat: Infinity }}>
+        <Ic v="✨" size={18} />
+      </motion.span>
+
+      <motion.div className="lgwrap" initial={{ opacity: 0, y: 20, scale: .97 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ type: 'spring', stiffness: 150, damping: 17 }}>
+        <span className="lg-leaf l" />
+        <span className="lg-leaf r" />
+        <Card color="default" className="lgcard">
+          <div className="lg-badge"><Ic v="couple" size={30} /></div>
+          <div className="lg-title"><Title size="middle" color="app-pink" variant="ribbon">情侣小站</Title></div>
+          <div className="lg-sub">爱是相伴，此心安处是吾乡</div>
+          <div className="aifrm" style={{ marginTop: 18 }}>
+            <Input placeholder="账号" value={u} onChange={(e: any) => setU(e.target.value)} />
+            <Input type="password" placeholder="密令" value={p} onChange={(e: any) => setP(e.target.value)} onKeyDown={(e: any) => { if (e.key === 'Enter') go() }} />
+            {err && <div className="lg-err">{err}</div>}
+            <Button type="primary" block onClick={go}>上岛</Button>
+          </div>
+          <div className="lg-isle"><i /><i /><i /></div>
+          <div className="lg-foot">only for us · 悄悄进来</div>
+        </Card>
+      </motion.div>
     </Background>
   )
 }

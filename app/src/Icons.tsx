@@ -18,6 +18,7 @@ import {
   Drop,
   EnvelopeOpen,
   Eye,
+  EyeSlash,
   FloppyDisk,
   Footprints,
   ForkKnife,
@@ -84,7 +85,7 @@ const M: Record<string, [any, string?]> = {
   '🎮': [GameController], 'gomoku': [Coins], '🧩': [PuzzlePiece], '🃏': [Cards],
   '🍬': [CirclesFour], '✈️': [AirplaneTilt],
   '1️⃣': [NumberCircleOne], '2️⃣': [NumberCircleTwo], '3️⃣': [NumberCircleThree], '⬇️': [DownloadSimple],
-  '🗑️': [TrashSimple], 'arrowL': [ArrowLeft], layout: [Layout], up: [ArrowUp, 'bold'], down: [ArrowDown, 'bold'], edit: [PencilSimple], del: [TrashSimple], '✏️': [PencilSimple], 'trophy': [Trophy, 'fill'], 'handshake': [Handshake, 'duotone'], 'close': [X, 'bold'],
+  '🗑️': [TrashSimple], 'arrowL': [ArrowLeft], layout: [Layout], up: [ArrowUp, 'bold'], down: [ArrowDown, 'bold'], edit: [PencilSimple], del: [TrashSimple], hide: [EyeSlash], '✏️': [PencilSimple], 'trophy': [Trophy, 'fill'], 'handshake': [Handshake, 'duotone'], 'close': [X, 'bold'],
   '📤': [UploadSimple], '📥': [DownloadSimple],
   '🧭': [Compass], '✨': [Sparkle, 'fill'],
 }
