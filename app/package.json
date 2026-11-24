@@ -1,6 +1,6 @@
 {
   "name": "app",
-  "version": "1.0.0",
+  "version": "0.0.4",
   "description": "情侣小站前端（React + Vite + TypeScript）",
   "private": true,
   "type": "module",
@@ -8,7 +8,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "release": "npm version patch --no-git-tag-version && vite build"
   },
   "keywords": [],
   "author": "",

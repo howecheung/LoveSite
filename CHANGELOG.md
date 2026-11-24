@@ -2,6 +2,18 @@
 
 本文件记录本项目自身的版本变化。PocketBase 官方的更新日志已存档在 [`docs/POCKETBASE_CHANGELOG.md`](docs/POCKETBASE_CHANGELOG.md)。
 
+## v0.0.4
+
+- PWA 缓存版本改为**构建时注入**：`app/public/sw.js` 里写 `__SW_VERSION__` 占位，`vite.config.ts` 构建后替换成「版本-构建时间戳」，不再手改；每次构建都会换缓存名，客户端升级后旧缓存自动清掉
+- 前端版本号统一由 `__APP_VERSION__` 注入（更多页底部、导出 JSON 的 `v` 字段），与 Release 版本一致
+- 新增 `npm run release`（`npm version patch` + `vite build`）与 README「发版」章节，做到仓库与部署零差异
+
+## v0.0.3
+
+- 通知弹窗增加「清除这些消息」：清除后红点归零，当天不再提醒，第二天恢复
+- 登录页重新设计（奶油点阵、绿色缎带、爱心标记、草坡），首页功能卡片的隐藏动作换成眼睛图标
+- 足迹页手机端隐藏底部导航、地图铺满视口；备份文件支持删除（二次确认）
+
 ## v57.1
 
 - 修复 `wishes.doneDate` 迁移会清空历史完成日期：PocketBase 改字段类型是先 `DROP COLUMN` 再 `ADD COLUMN`，

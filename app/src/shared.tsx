@@ -54,7 +54,7 @@ async function compressImg(fl: File): Promise<File> {
 
 // 真实提醒：今天还没打卡、三五天内的纪念日、对方最近发的内容
 const NOTICE_KEY = 'ai-notice-clear'
-export const APP_VER = 'v0.0.3'
+export const APP_VER = __APP_VERSION__
 const noticeCleared = (id: string) => {
   try { const m = JSON.parse(localStorage.getItem(NOTICE_KEY) || '{}'); return m[id] === today() } catch { return false }
 }

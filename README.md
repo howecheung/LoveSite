@@ -91,6 +91,28 @@ PB_URL=http://127.0.0.1:8094 SMOKE_USER_1=你的账号 SMOKE_USER_2=对方账号
 
 前端类型检查与构建：`cd app && npm run typecheck && npm run build`（tsconfig 已开启 `noUnusedLocals` / `noUnusedParameters`）。
 
+## 发版
+
+一条命令提升版本并构建，**不需要手改 `sw.js` 或页面里的版本号**：
+
+```bash
+cd app && npm run release      # npm version patch + vite build
+```
+
+- `vite.config.ts` 把 `package.json` 的 version 注入前端（`__APP_VERSION__`，更多页底部与导出 JSON 的 `v` 字段都用它）
+- 同时把 `sw.js` 里的 `__SW_VERSION__` 替换成 `版本-构建时间戳`（如 `0.0.4-20261124160812`），每次构建都不同 → 客户端升级后旧缓存自动清掉
+- 构建完把 `app/dist/*` 覆盖到 PocketBase 的 `pb_public/` 即完成部署（无后端迁移时）
+
+随后打 tag 与发布：
+
+```bash
+cd ..
+V=$(node -p "require('./app/package.json').version")
+git add -A && git commit -m "release: v$V"
+git tag "v$V" && git push origin main --tags
+gh release create "v$V" --target main --title "v$V" --notes-file .release-notes.md
+```
+
 ## 第三方许可
 
 animal-island-ui、Motion、Phosphor Icons、PocketBase 均为 MIT；字体为 SIL OFL；PWA 图标构图元素来自 Microsoft Fluent Emoji（MIT）。本仓库代码以 MIT 授权发布。

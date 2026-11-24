@@ -1,5 +1,6 @@
 // 情侣小站 PWA：页面壳联网优先（发版即生效），哈希资源缓存优先，API 一律走网络
-const V = 'aicouple-v86';
+// 版本号由 vite.config.ts 在构建时注入（package.json version + 构建时间戳），不要手改
+const V = '__SW_VERSION__';
 const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icons/icon-192.png'];
 self.addEventListener('install', e => {
   e.waitUntil(
