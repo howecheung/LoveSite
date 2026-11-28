@@ -3,6 +3,8 @@ dist/
 pb_data/
 pb_public/
 .pb/
+__pycache__/
+*.pyc
 _dl-pb.cjs
 _init-pb.cjs
 pb.log

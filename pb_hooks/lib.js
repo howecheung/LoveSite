@@ -141,4 +141,8 @@ function removeBackup(name) {
   return { ok: true }
 }
 
-module.exports = { b64, stampName, bkPath, fileSize, listBackups, removeBackup, davCfg, davCall, makeBackup }
+function isBackupName(name) {
+  return typeof name === "string" && BK_NAME.test(name)
+}
+
+module.exports = { b64, stampName, bkPath, fileSize, listBackups, removeBackup, davCfg, davCall, makeBackup, isBackupName }

@@ -10,12 +10,15 @@
 // 内含 data.db + storage/），而不是直接拷 pb_data 目录 —— 运行中的 SQLite 直接复制可能拿到不一致快照。
 
 const PB = process.env.PB_URL || 'http://127.0.0.1:8094'
-const EMAIL = process.env.PB_ADMIN_EMAIL || 'admin@local.test'
-const PASS = process.env.PB_ADMIN_PASS || 'pbadmin123456'
+// 不再内置超管默认口令：必须显式注入，避免仓库/计划任务里出现可用凭据
+const EMAIL = process.env.PB_ADMIN_EMAIL || ''
+const PASS = process.env.PB_ADMIN_PASS || ''
 const DAV = (process.env.DAV_URL || '').replace(/\/+$/, '')
 const DAV_USER = process.env.DAV_USER || ''
 const DAV_PASS = process.env.DAV_PASS || ''
-const KEEP = Number(process.env.KEEP || 7)
+const KEEP_RAW = Number(process.env.KEEP || 7)
+// 默认只清理超出保留数的旧备份；KEEP=0/负数会让新备份也被删，这里收紧到至少 1
+const KEEP = Number.isFinite(KEEP_RAW) && KEEP_RAW >= 1 ? Math.floor(KEEP_RAW) : 7
 
 const die = (m) => {
   console.error('✗ ' + m)
@@ -24,6 +27,7 @@ const die = (m) => {
 
 async function main() {
   if (!DAV) die('没有配置 DAV_URL')
+  if (!EMAIL || !PASS) die('没有配置 PB_ADMIN_EMAIL / PB_ADMIN_PASS')
   // 1) 超管登录
   const ar = await fetch(PB + '/api/collections/_superusers/auth-with-password', {
     method: 'POST',

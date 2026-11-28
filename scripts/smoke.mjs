@@ -7,7 +7,7 @@
 // 环境变量：
 //   PB_URL               PocketBase 地址（默认 http://127.0.0.1:8094）
 //   SMOKE_USER_1/2       两个测试成员的用户名（默认 zwh / mm）
-//   SMOKE_PASS           测试成员密码（默认 12345678）
+//   SMOKE_PASS           测试成员密码（必填）
 //   SMOKE_ADMIN_EMAIL    超管账号（可选，用于改密失败兜底复位）
 //   SMOKE_ADMIN_PASS     超管密码（可选）
 //
@@ -18,9 +18,11 @@
 const B = process.env.PB_URL || 'http://127.0.0.1:8094'
 const U1 = process.env.SMOKE_USER_1 || 'zwh'
 const U2 = process.env.SMOKE_USER_2 || 'mm'
-const PW = process.env.SMOKE_PASS || '12345678'
-const ADMIN = process.env.SMOKE_ADMIN_EMAIL || 'admin@local.test'
-const ADMIN_PW = process.env.SMOKE_ADMIN_PASS || 'pbadmin123456'
+const PW = process.env.SMOKE_PASS || ''
+// 不内置超管默认口令；只有显式配置时才做改密兜底
+const ADMIN = process.env.SMOKE_ADMIN_EMAIL || ''
+const ADMIN_PW = process.env.SMOKE_ADMIN_PASS || ''
+if (!PW) { console.error('✗ 请先设置 SMOKE_PASS（成员密码）'); process.exit(1) }
 
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
 let pass = 0, fail = 0
@@ -73,7 +75,17 @@ await T('写 siteName + tiles', async () => {
   if (sid) await S.update(sid, body, A); else { const r = await S.create(body, A); sid = r.id }
 })
 await T('tiles 顺序读回一致', async () => { const r = await S.get(sid, A); const ks = (r.tiles || []).map((x) => x.k).join(','); if (ks !== 'diary,album,wishes') throw new Error('读回 ' + ks) })
-await T('lockSalt / lockHash 可写', async () => { await S.update(sid, { lockSalt: 'aabb', lockHash: 'ccdd', lockOn: true }, A); const r = await S.get(sid, A); if (r.lockSalt !== 'aabb') throw new Error('lockSalt=' + r.lockSalt) })
+await T('lockSalt / lockHash 可写', async () => {
+  const before = { lockSalt: orig?.lockSalt || '', lockHash: orig?.lockHash || '', lockOn: !!orig?.lockOn }
+  try {
+    await S.update(sid, { lockSalt: 'aabb', lockHash: 'ccdd', lockOn: true }, A)
+    const r = await S.get(sid, A)
+    if (r.lockSalt !== 'aabb') throw new Error('lockSalt=' + r.lockSalt)
+  } finally {
+    // 即使断言失败也把锁恢复，避免把站点留在“有锁但无口令”的状态
+    await S.update(sid, before, A).catch(() => {})
+  }
+})
 
 console.log('\n=== 3. diaries / 点赞 / 评论 ===')
 const D = col('diaries')
@@ -167,10 +179,14 @@ await T('改密 → 新密码登录 → 复原', async () => {
   const t2 = (await auth(U1, PW + '9')).token
   await col('members').update(meA.id, { oldPassword: PW + '9', password: PW, passwordConfirm: PW }, t2)
 })
-try {
-  const su = await req('/api/collections/_superusers/auth-with-password', { method: 'POST', body: { identity: ADMIN, password: ADMIN_PW } })
-  await col('members').update(meA.id, { password: PW, passwordConfirm: PW }, su.token)
-} catch (e) { console.log('  warn 超管复位跳过：' + (e && e.message)) }
+if (ADMIN && ADMIN_PW) {
+  try {
+    const su = await req('/api/collections/_superusers/auth-with-password', { method: 'POST', body: { identity: ADMIN, password: ADMIN_PW } })
+    await col('members').update(meA.id, { password: PW, passwordConfirm: PW }, su.token)
+  } catch (e) { console.log('  warn 超管复位跳过：' + (e && e.message)) }
+} else {
+  console.log('  warn 未配置 SMOKE_ADMIN_EMAIL / SMOKE_ADMIN_PASS，跳过超管兜底')
+}
 await T('复原后旧密码可登录', async () => { await auth(U1, PW) })
 
 console.log('\n=== 清理 ===')

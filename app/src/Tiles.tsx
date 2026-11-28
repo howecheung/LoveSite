@@ -4,7 +4,7 @@ import { Card, Button, Modal, Input } from 'animal-island-ui'
 import { motion } from 'motion/react'
 import { tapSmall } from './motion'
 import { Ic } from './Icons'
-import { pb, showToast } from './core'
+import { saveSettings, showToast } from './core'
 
 export const TILES = [
   { k: 'album', ic: '🎬', t: '时光相册', s: '留住你我记忆', c: 'app-pink' },
@@ -23,11 +23,14 @@ export function resolveTiles(stored: any): any[] {
   const base: Record<string, any> = {}
   TILES.forEach((t) => { base[t.k] = t })
   if (!Array.isArray(stored) || !stored.length) return TILES.map((t) => ({ ...t }))
+  const http = (u: any) => typeof u === 'string' && /^https?:\/\//i.test(u)
   return stored.filter((e: any) => e && e.k).map((e: any) => {
     const b = base[e.k]
-    if (b) return { ...b, ...(e.ic ? { ic: e.ic } : {}), ...(e.t ? { t: e.t } : {}), ...(e.s !== undefined && e.s !== '' ? { s: e.s } : {}), ...(e.url ? { url: e.url } : {}) }
+    if (b) return { ...b, ...(e.ic ? { ic: e.ic } : {}), ...(e.t ? { t: e.t } : {}), ...(e.s !== undefined && e.s !== '' ? { s: e.s } : {}), ...(http(e.url) ? { url: e.url } : {}) }
     // 已下线的内置卡（如旧的记账/衣柜/经期）只在用户改过标题或图标时保留，否则丢弃
-    return e.t || e.ic ? e : null
+    if (!(e.t || e.ic)) return null
+    // 链接卡只接受 http(s)，挡住导入 JSON 里的 javascript: 等协议
+    return { ...e, url: http(e.url) ? e.url : undefined }
   }).filter(Boolean)
 }
 function tileOverride(b: any | undefined, cur: any): any {
@@ -64,9 +67,7 @@ export function PageTileMgr({ data }: any) {
     setBusy(true)
     try {
       const payload = next.map((e: any) => tileOverride(baseMap[e.k], e))
-      const sid = data.setting?.id
-      if (sid) await pb.collection('settings').update(sid, { tiles: payload })
-      else await pb.collection('settings').create({ tiles: payload })
+      await saveSettings({ tiles: payload })
     } catch (e: any) {
       const d: any = e?.data?.data || e?.data || {}
       showToast('没保存上：' + (Object.values(d).map((v: any) => v?.message || v).join('；').slice(0, 50) || String(e?.message || e).slice(0, 40)))

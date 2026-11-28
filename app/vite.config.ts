@@ -50,6 +50,8 @@ export default defineConfig({
           if (id.includes('animal-island-ui')) return 'ui'
           if (id.includes('motion')) return 'motion'
           if (id.includes('pocketbase')) return 'pocketbase'
+          // 地图只在 lazy 的 Footprint 里用，单独分包避免 Leaflet 跟首屏 vendor 一起下载
+          if (id.includes('leaflet') || id.includes('@amap')) return 'map'
           return 'vendor'
         },
       },

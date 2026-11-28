@@ -4,11 +4,11 @@ import { Card, Title, Button, Input, Tag, Divider, Modal } from 'animal-island-u
 import { motion, AnimatePresence } from 'motion/react'
 import { spring, tapSmall, listVariant, itemVariant } from './motion'
 import { Ic } from './Icons'
-import { pb, quiet, showToast } from './core'
+import { pb, quiet, showToast, saveSettings, LS } from './core'
 import { readExif, nextOccurLunar } from './utils'
 import {
   exifLine, lmdText, fmtDT, dayStr, today, daysSince, nextOccur,
-  MOOD_CN, MOOD_IC, MOOD_TAG, compressImg, APP_VER,
+  MOOD_CN, MOOD_IC, MOOD_TAG, compressImg, APP_VER, MAX_ALBUM_PHOTOS,
 } from './shared'
 
 function Av({ rec, size = 34, fb }: any) {
@@ -27,31 +27,41 @@ const TabBtn = ({ n, on, go }: any) => (
   </motion.button>
 )
 
-function HomeExtra({ data, go }: any) {
-  const soon = data.moments.slice(0, 2)
+function HomeExtra({ data, go, unlocked }: any) {
+  const hidePrivate = !!data.setting?.lockOn && !unlocked
+  const diaries = (data.diaries || []).filter((d: any) => !(d.private && hidePrivate))
+  // 按“下一次发生”排序，而不是按原始日期升序；已过去的一次性日子不再展示
+  const soon = (data.moments || [])
+    .map((m: any) => {
+      let n = NaN
+      try { n = m.lunar && m.lunarMD ? nextOccurLunar(m.lunarMD, m.yearly) : nextOccur(m.day, m.yearly) } catch { n = NaN }
+      return { m, n }
+    })
+    .filter((x: any) => Number.isFinite(x.n) && x.n >= 0)
+    .sort((a: any, b: any) => a.n - b.n)
+    .slice(0, 2)
   return (
     <>
       {!!soon.length && (
         <Card color="app-yellow" className="blk">
           <Title size="small" variant="tab">临近的日子</Title>
-          {soon.map((m: any) => {
-            const n = m.lunar && m.lunarMD ? nextOccurLunar(m.lunarMD, m.yearly) : nextOccur(m.day, m.yearly)
-            return <div className="li" key={m.id}>
+          {soon.map(({ m, n }: any) => (
+            <div className="li" key={m.id}>
               <span className="dot"><Ic v={m.emoji || '💗'} /></span>
               <span className="grow"><b>{m.name}</b><div className="mut">{m.lunar && m.lunarMD ? `农历${lmdText(m.lunarMD)}` : dayStr(m.day)}{m.yearly ? ' · 每年' : ''}</div></span>
-              <b className="cnt">{n <= 0 ? '就是今天🎉' : `还有 ${n} 天`}</b>
+              <b className="cnt">{n === 0 ? '就是今天🎉' : `还有 ${n} 天`}</b>
             </div>
-          })}
+          ))}
           <div style={{ textAlign: 'right', marginTop: 8 }}><Button size="small" ghost onClick={() => go('countdown')}>全部日子 →</Button></div>
         </Card>
       )}
-      {!!data.diaries.length && (
+      {!!diaries.length && (
         <Card className="blk">
           <Title size="small" variant="tab">最近的日常</Title>
-          {data.diaries.slice(0, 3).map((d: any) => (
+          {diaries.slice(0, 3).map((d: any) => (
             <div className="li" key={d.id}>
               <span className="dot"><Ic v={MOOD_IC[d.mood] || '📔'} /></span>
-              <span className="grow"><b>{d.title || d.text.slice(0, 18)}</b>
+              <span className="grow"><b>{d.title || (d.text || '').slice(0, 18)}</b>
                 <div className="mut">{d.expand?.member?.nickName || ''} · {fmtDT(d.created)}</div></span>
             </div>
           ))}
@@ -173,7 +183,7 @@ function Albums({ data, reload, onAdd, go, grid, setGrid }: any) {
                   ? <img src={gurl(a, a.cover || a.photos[0])} alt="" />
                   : <div className="noimg"><Ic v="🖼️" size={32} /></div>}
                 <div className="n">{a.name}</div>
-                <div className="mut">{(a.photos || []).length} 张 · {(a.created || '').slice(5, 10)}</div>
+                <div className="mut">{(a.photos || []).length} 张 · {fmtDT(a.created).slice(5, 10)}</div>
               </Card>
             </motion.div>
           ))}
@@ -186,7 +196,7 @@ function Albums({ data, reload, onAdd, go, grid, setGrid }: any) {
             <Av rec={a.expand?.member} size={30} fb="🖼️" />
             <span className="grow">
               <b>{(a.expand && a.expand.member && a.expand.member.nickName) || '岛民'}</b>
-              <div className="mut" style={{ fontSize: 12 }}>{(a.created || '').slice(0, 16)}</div>
+              <div className="mut" style={{ fontSize: 12 }}>{fmtDT(a.created)}</div>
             </span>
             <span className="pill" onClick={() => open(a)}>{(a.photos || []).length} 张</span>
           </div>
@@ -238,11 +248,16 @@ function AlbumView({ id, data, reload, go, onEdit }: any) {
   }
   const addMore = async (raw: File[]) => {
     if (!raw.length) return
+    const room = MAX_ALBUM_PHOTOS - ps.length
+    if (room <= 0) { showToast(`每本相册最多 ${MAX_ALBUM_PHOTOS} 张`); return }
+    const files = raw.slice(0, room)
+    if (raw.length > room) showToast(`每本最多 ${MAX_ALBUM_PHOTOS} 张，这次先加 ${room} 张`)
     setBusy(true)
     let ok = 0, bad = 0
-    const ex: any = { ...(JSON.parse(a.exifs || '{}')) }
+    let ex: any = {}
+    try { ex = JSON.parse(a.exifs || '{}') } catch { ex = {} }
     let cur: string[] = [...(a.photos || [])]
-    for (const src of raw) {
+    for (const src of files) {
       try {
         // 先读原始文件的 EXIF（压缩成 JPEG 后 EXIF 会被丢掉），再压缩上传
         const info = await readExif(src).catch(() => null)
@@ -268,7 +283,7 @@ function AlbumView({ id, data, reload, go, onEdit }: any) {
           <Av rec={a.expand?.member} size={30} fb="🖼️" />
           <span className="grow">
             <b>{(a.expand && a.expand.member && a.expand.member.nickName) || '岛民'}</b>
-            <div className="mut" style={{ fontSize: 12 }}>{(a.created || '').slice(0, 16)}</div>
+            <div className="mut" style={{ fontSize: 12 }}>{fmtDT(a.created)}</div>
           </span>
           <span className="pill">{ps.length} 张</span>
         </div>
@@ -374,13 +389,14 @@ function Moments({ data, onAdd, onEdit }: any) {
       <div className="pbar"><Button type="primary" onClick={onAdd}><Ic v="➕" size={14} /> 添加日子</Button><span className="mut">{data.moments.length} 个纪念日</span></div>
       {data.moments.map((m: any) => {
         const n = m.lunar && m.lunarMD ? nextOccurLunar(m.lunarMD, m.yearly) : nextOccur(m.day, m.yearly)
+        const valid = Number.isFinite(n)
         return (
-          <Card key={m.id} color={(n >= 0 && n <= 15 ? 'app-pink' : 'default') as any} className="blk">
+          <Card key={m.id} color={(valid && n >= 0 && n <= 15 ? 'app-pink' : 'default') as any} className="blk">
             <div className="li" style={{ padding: 0, border: 0 }}>
               <span className="dot" style={{ width: 44, height: 44 }}><Ic v={m.emoji || '💗'} size={20} /></span>
               <span className="grow"><b style={{ fontSize: 15 }}>{m.name}</b>
                 <div className="mut">{m.lunar && m.lunarMD ? `农历${lmdText(m.lunarMD)}` : dayStr(m.day)}{m.yearly ? ' · 每年' : ''}{m.note ? ` · ${m.note}` : ''}</div></span>
-              <span className="dayn">{Math.abs(n)}<small>{n < 0 ? '已过天数' : '天后'}</small></span>
+              <span className="dayn">{valid ? (n === 0 ? '今天' : Math.abs(n)) : '—'}<small>{valid ? (n === 0 ? '' : n < 0 ? '已过天数' : '天后') : '日期无效'}</small></span>
               <motion.button {...tapSmall} className="morebtn" title="编辑 / 删除" onClick={() => onEdit('moment-edit', m)}><Ic v="⋯" size={15} /></motion.button>
             </div>
           </Card>
@@ -392,29 +408,49 @@ function Moments({ data, onAdd, onEdit }: any) {
 }
 
 function Checkin({ data, reload, me, onAdd, onEdit }: any) {
-  const did = (pid: string) => data.ckrecords.some((r: any) => r.plan === pid && r.who === me && r.day === today())
+  const myId = me?.id
+  const myName = me?.nickName || me?.username || ''
+  // 新记录写 member.id；旧记录写昵称，两种都兼容
+  const mine = (who: string) => !!who && (who === myId || who === myName)
+  const t = today()
+  const did = (pid: string) => data.ckrecords.some((r: any) => r.plan === pid && mine(r.who) && r.day === t)
+  const [busy, setBusy] = useState('')
+  const busyRef = useRef(false)
   const ymd = (off: number) => {
     const d = new Date(); d.setDate(d.getDate() - off)
     const z = (n: number) => String(n).padStart(2, '0')
     return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`
   }
+  const who = myId || myName
+  const mark = async (plan: string, day: string, okMsg?: string) => {
+    if (busyRef.current) return
+    busyRef.current = true
+    setBusy(plan)
+    try {
+      await pb.collection('ckrecords').create({ plan, who, day })
+      if (okMsg) showToast(okMsg)
+      await reload()
+    } catch (e) { quiet(e) } finally {
+      busyRef.current = false
+      setBusy('')
+    }
+  }
   return (
     <>
-      <div className="pbar"><Button type="primary" onClick={onAdd}><Ic v="➕" size={14} /> 新计划</Button><span className="mut">今天 · {today()}</span></div>
+      <div className="pbar"><Button type="primary" onClick={onAdd}><Ic v="➕" size={14} /> 新计划</Button><span className="mut">今天 · {t}</span></div>
       <Card color="app-blue" className="blk">
         {data.checkins.map((c: any) => {
           const on = did(c.id)
+          const pending = busy === c.id
           return (
             <div className="li" key={c.id}>
               <span className="dot"><Ic v={c.emoji || '📌'} /></span>
               <span className="grow"><b>{c.name}</b><div className="mut">{on ? '今日已打卡' : '还没打卡'}</div></span>
-              <Button size="small" type={on ? 'text' : 'primary'} disabled={on} onClick={async () => {
-                await pb.collection('ckrecords').create({ plan: c.id, who: me, day: today() }); reload()
-              }}>{on ? '✓ 已打卡' : '打卡'}</Button>
-              {!on && <Button size="small" type="text" onClick={async () => {
+              <Button size="small" type={on ? 'text' : 'primary'} disabled={on || pending} loading={pending} onClick={() => mark(c.id, t)}>{on ? '✓ 已打卡' : '打卡'}</Button>
+              {!on && <Button size="small" type="text" disabled={pending} onClick={async () => {
                 const d = ymd(1)
-                if (data.ckrecords.some((r: any) => r.plan === c.id && r.who === me && r.day === d)) { showToast('昨天已经打过卡啦'); return }
-                try { await pb.collection('ckrecords').create({ plan: c.id, who: me, day: d }); showToast('已补昨天的卡'); reload() } catch (e) { quiet(e) }
+                if (data.ckrecords.some((r: any) => r.plan === c.id && mine(r.who) && r.day === d)) { showToast('昨天已经打过卡啦'); return }
+                await mark(c.id, d, '已补昨天的卡')
               }}>补昨天</Button>}
               <motion.button {...tapSmall} className="morebtn" title="历史 / 删除" onClick={() => onEdit('checkin-more', c)}><Ic v="⋯" size={15} /></motion.button>
             </div>
@@ -443,7 +479,7 @@ function Msgs({ data, reload, me, myId, onEdit }: any) {
         <Card key={m.id} color="app-teal" className="blk">
           <div style={{ fontSize: 14.5, lineHeight: 1.7 }}>{m.text}</div>
           <div className="li" style={{ padding: '8px 0 0', border: 0 }}>
-            <Tag size="small" color="purple"><Ic v="💌" size={12} /> {m.mood || '祝福'}</Tag>
+            <Tag size="small" color="purple"><Ic v="💌" size={12} /> {m.expand?.member?.nickName || m.mood || '祝福'}</Tag>
             <span className="grow" /><span className="mut">{fmtDT(m.created)}</span>
             {myId && m.member === myId && <motion.button {...tapSmall} className="morebtn" title="删除" onClick={() => onEdit('msg-del', m)}><Ic v="⋯" size={15} /></motion.button>}
           </div>
@@ -454,12 +490,55 @@ function Msgs({ data, reload, me, myId, onEdit }: any) {
   )
 }
 
+const DEF_EAT = ['火锅', '日料', '烧烤', '粤菜', '麻辣烫', '披萨', '饺子', '家常炒菜', '米线', '汉堡', '泰餐', '砂锅粥', '铁板烧', '小面', '轻食沙拉']
+const DEF_DO = ['公园散步', '看场电影', '逛博物馆', '去海边', '爬山', '逛书店', '密室逃脱', '游乐园', '咖啡厅发呆', '看展', '骑行绿道', '露营看星星']
+
+// 顶层组件：避免在 Tools 内定义导致每次输入重挂载、输入框失焦
+function ToolCard({ k, title, ic, color, list, value, rolling, burst, draft, onSpin, onRemove, onDraft, onAdd }: any) {
+  return (
+    <Card color={color} className="blk toolcard">
+      <Title size="small" variant="tab"><Ic v={ic} size={15} /> {title}</Title>
+      <div className="toolstage">
+        <AnimatePresence mode="wait">
+          <motion.div key={value || 'empty'} className={'toolval' + (rolling ? ' rolling' : '')}
+            initial={{ opacity: 0, y: 10, scale: .9 }} animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -8, scale: .94 }} transition={spring}>
+            {value || '？'}
+          </motion.div>
+        </AnimatePresence>
+        {burst && (
+          <div className="burst" aria-hidden>
+            {[0, 1, 2, 3, 4, 5].map((i) => <span key={i} style={{ '--i': i } as any}><Ic v="✨" size={14} /></span>)}
+          </div>
+        )}
+      </div>
+      <Button type="primary" block disabled={rolling || !list.length} onClick={onSpin}>
+        {rolling ? '摇一摇…' : list.length ? '帮我决定' : '先加一项'}
+      </Button>
+      <Divider style={{ margin: '12px 0 10px' }} />
+      <div className="mut" style={{ fontSize: 12.5, marginBottom: 8 }}>我的菜单 · {list.length} 项</div>
+      <div className="optchips">
+        {list.map((o: string, i: number) => (
+          <Tag key={o + i} color="app-pink">
+            {o}
+            <span className="optx" title="删除" onClick={() => onRemove(i)}>×</span>
+          </Tag>
+        ))}
+      </div>
+      <div className="r2" style={{ marginTop: 10 }}>
+        <Input value={draft} placeholder={'加一个' + (k === 'eat' ? '想吃' : '想玩') + '的…'}
+          onChange={(e: any) => onDraft(e.target.value)}
+          onKeyDown={(e: any) => { if (e.key === 'Enter') onAdd() }} />
+        <Button onClick={onAdd}>添加</Button>
+      </div>
+    </Card>
+  )
+}
+
 function Tools({ data, reload }: any) {
-  const DEF_EAT = ['火锅', '日料', '烧烤', '粤菜', '麻辣烫', '披萨', '饺子', '家常炒菜', '米线', '汉堡', '泰餐', '砂锅粥', '铁板烧', '小面', '轻食沙拉']
-  const DEF_DO = ['公园散步', '看场电影', '逛博物馆', '去海边', '爬山', '逛书店', '密室逃脱', '游乐园', '咖啡厅发呆', '看展', '骑行绿道', '露营看星星']
-  const sid = data.setting?.id
-  const eat = Array.isArray(data.setting?.eatOpts) && data.setting.eatOpts.length ? data.setting.eatOpts : DEF_EAT
-  const todo = Array.isArray(data.setting?.doOpts) && data.setting.doOpts.length ? data.setting.doOpts : DEF_DO
+  // 区分“没配置”和“清空了”：空数组应保持为空，而不是回落到默认菜单
+  const eat = Array.isArray(data.setting?.eatOpts) ? data.setting.eatOpts : DEF_EAT
+  const todo = Array.isArray(data.setting?.doOpts) ? data.setting.doOpts : DEF_DO
   const [show, setShow] = useState<any>({})
   const [roll, setRoll] = useState('')
   const [burst, setBurst] = useState('')
@@ -471,10 +550,10 @@ function Tools({ data, reload }: any) {
   const opts = (k: string): string[] => (k === 'eat' ? eat : todo)
 
   const saveOpts = async (k: string, arr: string[]) => {
-    const body: any = k === 'eat' ? { eatOpts: arr } : { doOpts: arr }
+    // 删掉的恰好是抽签结果时一起清掉，避免空菜单还挂着一个已不存在的选项
+    setShow((s: any) => (s[k] && !arr.includes(s[k]) ? { ...s, [k]: '' } : s))
     try {
-      if (sid) await pb.collection('settings').update(sid, body)
-      else await pb.collection('settings').create(body)
+      await saveSettings(k === 'eat' ? { eatOpts: arr } : { doOpts: arr })
       reload()
     } catch (e: any) { quiet(e) }
   }
@@ -506,53 +585,16 @@ function Tools({ data, reload }: any) {
     timers.current.push(t)
   }
 
-  const PickCard = ({ k, title, ic, color }: any) => {
-    const val = show[k]
-    const list = opts(k)
-    return (
-      <Card color={color} className="blk toolcard">
-        <Title size="small" variant="tab"><Ic v={ic} size={15} /> {title}</Title>
-        <div className="toolstage">
-          <AnimatePresence mode="wait">
-            <motion.div key={val || 'empty'} className={'toolval' + (roll === k ? ' rolling' : '')}
-              initial={{ opacity: 0, y: 10, scale: .9 }} animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -8, scale: .94 }} transition={spring}>
-              {val || '？'}
-            </motion.div>
-          </AnimatePresence>
-          {burst === k && (
-            <div className="burst" aria-hidden>
-              {[0, 1, 2, 3, 4, 5].map((i) => <span key={i} style={{ '--i': i } as any}><Ic v="✨" size={14} /></span>)}
-            </div>
-          )}
-        </div>
-        <Button type="primary" block disabled={!!roll} onClick={() => spin(k)}>
-          {roll === k ? '摇一摇…' : '帮我决定'}
-        </Button>
-        <Divider style={{ margin: '12px 0 10px' }} />
-        <div className="mut" style={{ fontSize: 12.5, marginBottom: 8 }}>我的菜单 · {list.length} 项</div>
-        <div className="optchips">
-          {list.map((o: string, i: number) => (
-            <Tag key={o + i} color="app-pink">
-              {o}
-              <span className="optx" title="删除" onClick={() => saveOpts(k, list.filter((_, j) => j !== i))}>×</span>
-            </Tag>
-          ))}
-        </div>
-        <div className="r2" style={{ marginTop: 10 }}>
-          <Input value={draft[k]} placeholder={'加一个' + (k === 'eat' ? '想吃' : '想玩') + '的…'}
-            onChange={(e: any) => setDraft({ ...draft, [k]: e.target.value })}
-            onKeyDown={(e: any) => { if (e.key === 'Enter') addOpt(k) }} />
-          <Button onClick={() => addOpt(k)}>添加</Button>
-        </div>
-      </Card>
-    )
-  }
-
   return (
     <>
-      <PickCard k="eat" title="吃什么" ic="🍜" color="app-orange" />
-      <PickCard k="do" title="做什么" ic="🧭" color="app-teal" />
+      <ToolCard k="eat" title="吃什么" ic="🍜" color="app-orange" list={eat}
+        value={show.eat} rolling={roll === 'eat'} burst={burst === 'eat'} draft={draft.eat}
+        onSpin={() => spin('eat')} onRemove={(i: number) => saveOpts('eat', eat.filter((_: string, j: number) => j !== i))}
+        onDraft={(v: string) => setDraft({ ...draft, eat: v })} onAdd={() => addOpt('eat')} />
+      <ToolCard k="do" title="做什么" ic="🧭" color="app-teal" list={todo}
+        value={show.do} rolling={roll === 'do'} burst={burst === 'do'} draft={draft.do}
+        onSpin={() => spin('do')} onRemove={(i: number) => saveOpts('do', todo.filter((_: string, j: number) => j !== i))}
+        onDraft={(v: string) => setDraft({ ...draft, do: v })} onAdd={() => addOpt('do')} />
     </>
   )
 }
@@ -670,7 +712,7 @@ function BackupPage({ reload }: any) {
     setBusy('')
   }
 
-  if (!c) return <Card className="blk"><div className="mut" style={{ textAlign: 'center', padding: 18 }}>载入中…</div></Card>
+  if (!c) return <Card className="blk"><div className="mut" style={{ textAlign: 'center', padding: 18 }}>{msg ? `读取备份设置失败：${msg.text}` : '载入中…'}</div></Card>
   return (
     <>
       <Card color="app-green" className="blk">
@@ -726,7 +768,7 @@ function BackupPage({ reload }: any) {
 }
 
 function More({ data, onOut, setModal, me, go, mode, theme, setTheme, imgQ, setImgQ }: any) {
-  const [rem, setRem] = useState(() => { try { return localStorage.getItem('ai-remind') === '1' } catch { return false } })
+  const [rem, setRem] = useState(() => LS.get('ai-remind') === '1')
   const line = (ic: string, t: string, v: string, act?: () => void) => (
     <div className="li" onClick={act}>
       <span className="dot"><Ic v={ic} /></span>
@@ -738,7 +780,7 @@ function More({ data, onOut, setModal, me, go, mode, theme, setTheme, imgQ, setI
     if (!('Notification' in window)) { showToast('这个浏览器不支持通知'); return }
     try {
       const p = await Notification.requestPermission()
-      localStorage.setItem('ai-remind', p === 'granted' ? '1' : '0')
+      LS.set('ai-remind', p === 'granted' ? '1' : '0')
       setRem(p === 'granted')
       showToast(p === 'granted' ? '已开启，每天会提醒一次纪念日和打卡' : '没拿到通知权限')
     } catch (e) { quiet(e) }
@@ -749,8 +791,15 @@ function More({ data, onOut, setModal, me, go, mode, theme, setTheme, imgQ, setI
     for (const k of keys) {
       try {
         const rows = await pb.collection(k).getFullList()
-        // tokenKey 是登录态凭据，不写进备份文件
-        out[k] = k === 'members' ? rows.map((r: any) => { const c = { ...r }; delete c.tokenKey; return c }) : rows
+        if (k === 'members') {
+          // tokenKey 是登录态凭据；members 本身不参与常规恢复，这里只做可读导出
+          out[k] = rows.map((r: any) => { const c = { ...r }; delete c.tokenKey; return c })
+        } else if (k === 'settings') {
+          // 私密口令哈希/盐不离开服务器；锁开关也一并跳过，避免导入后出现“锁着但无口令”
+          out[k] = rows.map((r: any) => { const c = { ...r }; delete c.lockHash; delete c.lockSalt; delete c.lockOn; return c })
+        } else {
+          out[k] = rows
+        }
       } catch { out[k] = [] }
     }
     const a = document.createElement('a')
@@ -766,6 +815,16 @@ function More({ data, onOut, setModal, me, go, mode, theme, setTheme, imgQ, setI
       const j = JSON.parse(await f.text())
       for (const k of Object.keys(j)) {
         if (k === 'v' || k === 'at' || !Array.isArray(j[k])) continue
+        // settings 是单例：走统一入口，避免导入时又造出第二条
+        if (k === 'settings') {
+          const raw = j[k][0]
+          if (raw) {
+            const r: any = { ...raw }
+            delete r.id; delete r.collectionId; delete r.collectionName; delete r.created; delete r.updated
+            try { await saveSettings(r); n++ } catch { /* 单条失败不阻断其它集合 */ }
+          }
+          continue
+        }
         for (const raw of j[k]) {
           // 系统字段只读，带上去会 400：先剥掉，id 单独留着做 upsert
           const r: any = { ...raw }
@@ -775,7 +834,7 @@ function More({ data, onOut, setModal, me, go, mode, theme, setTheme, imgQ, setI
           catch { try { await pb.collection(k).create(id ? { ...r, id } : r); n++ } catch { } }
         }
       }
-      showToast(`已导入 ${n} 条数据`)
+      showToast(`已导入 ${n} 条记录（图片文件请用完整备份）`)
       setTimeout(() => location.reload(), 600)
     } catch (e) { quiet(e) }
   }
@@ -798,8 +857,8 @@ function More({ data, onOut, setModal, me, go, mode, theme, setTheme, imgQ, setI
       </Card>
       <Card color="warm-peach-pink" className="blk"><Title size="small" variant="tab">数据</Title>
         {line('💾', '数据备份', 'WebDAV 自动备份', () => go('backup'))}
-        {line('📤', '导出数据', 'JSON · 16 个集合', exportAll)}
-        {line('📥', '导入数据', '从 JSON 恢复 · 按 id 覆盖', () => { const i = document.createElement('input'); i.type = 'file'; i.accept = 'application/json'; i.onchange = () => { const f = i.files?.[0]; if (f) importAll(f) }; i.click() })}
+        {line('📤', '导出数据', 'JSON · 不含图片与锁配置', exportAll)}
+        {line('📥', '导入数据', '从 JSON 恢复记录 · 图片需完整备份', () => { const i = document.createElement('input'); i.type = 'file'; i.accept = 'application/json'; i.onchange = () => { const f = i.files?.[0]; if (f) importAll(f) }; i.click() })}
         {line('🧊', '刷新数据', '', () => location.reload())}
       </Card>
       <Card className="blk" style={{ textAlign: 'center' }}>

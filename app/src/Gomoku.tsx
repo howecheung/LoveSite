@@ -5,12 +5,12 @@ import { Card, Title, Button, Tag } from 'animal-island-ui'
 import { motion } from 'motion/react'
 import { tapSmall } from './motion'
 import { Ic } from './Icons'
-import { pb, quiet, showToast } from './core'
+import { pb, quiet, showToast, LS } from './core'
 const GN = 15
 const CONF = ['#ff9ec4', '#ffd76e', '#9ad9a0', '#9ecbff', '#d1b3ff']
 const HIST_KEY = 'gomoku_hist'
-const loadHist = (): any[] => { try { const v = JSON.parse(localStorage.getItem(HIST_KEY) || '[]'); return Array.isArray(v) ? v : [] } catch { return [] } }
-const pushHist = (rec: any) => { localStorage.setItem(HIST_KEY, JSON.stringify([rec, ...loadHist()].slice(0, 100))) }
+const loadHist = (): any[] => { try { const v = JSON.parse(LS.get(HIST_KEY) || '[]'); return Array.isArray(v) ? v : [] } catch { return [] } }
+const pushHist = (rec: any) => { LS.set(HIST_KEY, JSON.stringify([rec, ...loadHist()].slice(0, 100))) }
 
 function Games({ go }: any) {
   const rows = [
@@ -39,7 +39,7 @@ function GomokuHome({ go, me }: any) {
   const [jc, setJc] = useState('')
   const [recOpen, setRecOpen] = useState(false)
   const myName = me?.nickName || me?.username || '我'
-  const pushHistLocal = (rs: any[]) => { try { localStorage.setItem(HIST_KEY, JSON.stringify(rs.map((r) => ({
+  const pushHistLocal = (rs: any[]) => { try { LS.set(HIST_KEY, JSON.stringify(rs.map((r) => ({
     t: new Date(r.created).getTime(), w: r.winner === 'draw' ? 3 : (r.winner === 'black' ? 1 : 2), mv: r.mv, dur: r.dur, bn: r.bn, wn: r.wn })))) } catch { /* ignore */ } }
   const load = () => {
     pb.collection('gmk').getFullList({ sort: '-created', filter: "winner = ''" }).then(setGames).catch(quiet)
@@ -89,10 +89,10 @@ function GomokuHome({ go, me }: any) {
     } catch (e) { quiet(e) }
   }
   const isToday = (t: number) => new Date(t).toDateString() === new Date().toDateString()
-  const isMine = (x: any) => (x.bid || x.wid) ? (x.bid === me.id || x.wid === me.id) : (x.bn === myName || x.wn === myName)
+  const isMine = (x: any) => (x.bId || x.wId) ? (x.bId === me.id || x.wId === me.id) : (x.bn === myName || x.wn === myName)
   const rate = (arr: any[]) => {
     const played = arr.filter((x) => x.winner !== 'draw').length
-    const won = arr.filter((x) => x.winner !== 'draw' && (x.winner === 'black' ? x.bid === me.id || (!x.bid && x.bn === myName) : x.wid === me.id || (!x.wid && x.wn === myName))).length
+    const won = arr.filter((x) => x.winner !== 'draw' && (x.winner === 'black' ? x.bId === me.id || (!x.bId && x.bn === myName) : x.wId === me.id || (!x.wId && x.wn === myName))).length
     return played ? Math.round((won / played) * 100) : null
   }
   const td = hist.filter((x) => isToday(new Date(x.created).getTime()))
@@ -125,7 +125,7 @@ function GomokuHome({ go, me }: any) {
             value={jc} onChange={(e: any) => setJc(e.target.value)} />
           <Button size="small" type="primary" onClick={joinByCode}>加入</Button>
         </div>
-        <div style={{ marginTop: 12 }}><Button size="small" ghost onClick={() => { localStorage.removeItem('gomoku'); go('gomoku-local') }}>同屏一人执一子（离线模式）</Button></div>
+        <div style={{ marginTop: 12 }}><Button size="small" ghost onClick={() => { LS.del('gomoku'); go('gomoku-local') }}>同屏一人执一子（离线模式）</Button></div>
       </Card>
       <Card className="blk"><Title size="small" variant="tab">胜率</Title>
         {wr('今日', td2)}
@@ -192,7 +192,7 @@ function GomokuLive({ id, go, me }: any) {
     recorded.current = gk
     pb.collection('gmkr').getFullList({ filter: `game="${gk}"` }).then((l) => { if (!l.length)
       pb.collection('gmkr').create({ game: gk, winner: g.winner, bn: g.bnm, wn: g.wnm, bId: g.black, wId: g.white,
-        mv: parseMv(g.moves || '').length, dur: g.dur || 0 }).catch(quiet)
+        mv: parseMv(g.moves || '').length, dur: g.dur || 0 }).catch((e: any) => { if (e?.status !== 400) quiet(e) })
     }).then(() => pb.collection('gmkr').getList(1, 200, { sort: '-created', fields: 'id' }))
       .then((pg) => { pg.items.slice(100).forEach((x: any) => pb.collection('gmkr').delete(x.id).catch(() => {})) }).catch(quiet)
   }, [g?.winner])
@@ -243,9 +243,9 @@ function GomokuLive({ id, go, me }: any) {
   const answer = (ok: boolean) => { if (!ok) { patch({ prop: '', propBy: '' }); return }
     if (g.prop === 'undo') undo()
     else patch({ winner: 'draw', state: 'done', prop: '', propBy: '', dur: Math.round((Date.now() - (g.start || Date.now())) / 1000) }) }
-  const resign = () => patch({ winner: seat === 'black' ? 'white' : 'black', state: 'done', dur: Math.round((Date.now() - (g.start || Date.now())) / 1000) })
+  const resign = () => { if (!confirm('确定认输吗？')) return; patch({ winner: seat === 'black' ? 'white' : 'black', state: 'done', dur: Math.round((Date.now() - (g.start || Date.now())) / 1000) }) }
   const rematch = () => patch({ moves: '', winner: '', state: 'live', prop: '', propBy: '', start: Date.now(), dur: 0, round: (g.round || 1) + 1 })
-  const swap = () => patch({ black: g.white, white: g.black, bnm: g.wnm, wnm: g.bnm, moves: '', winner: '', state: 'live', prop: '', propBy: '', start: Date.now(), dur: 0 })
+  const swap = () => patch({ black: g.white, white: g.black, bnm: g.wnm, wnm: g.bnm, moves: '', winner: '', state: 'live', prop: '', propBy: '', start: Date.now(), dur: 0, round: (g.round || 1) + 1 })
   const takeSeat = (want: string) => patch(want === 'black'
     ? { black: me.id, bnm: myName, white: '', wnm: '', bSeen: Date.now(), state: 'lobby' }
     : { white: me.id, wnm: myName, black: '', bnm: '', wSeen: Date.now(), state: 'lobby' })
@@ -331,11 +331,11 @@ function GomokuLive({ id, go, me }: any) {
   )
 }
 
-function GomokuLocal({ data, go }: any) {  const load = (): any => { try { const v = JSON.parse(localStorage.getItem('gomoku') || ''); return Array.isArray(v?.b) && v.b.length === GN * GN ? v : null } catch { return null } }
+function GomokuLocal({ data, go }: any) {  const load = (): any => { try { const v = JSON.parse(LS.get('gomoku') || ''); return Array.isArray(v?.b) && v.b.length === GN * GN ? v : null } catch { return null } }
   const fresh = () => ({ b: Array(GN * GN).fill(0), turn: 1, win: 0, hist: [] as number[], start: Date.now() })
   const [g, setG] = useState<any>(load() || fresh())
   const names = [data?.setting?.boyName || '男孩', data?.setting?.girlName || '女孩']
-  const save = (v: any) => { localStorage.setItem('gomoku', JSON.stringify(v)); setG(v) }
+  const save = (v: any) => { LS.set('gomoku', JSON.stringify(v)); setG(v) }
   const winLine = (b: number[], i: number) => {
     const r0 = Math.floor(i / GN), c0 = i % GN, who = b[i]
     for (const [dr, dc] of [[0, 1], [1, 0], [1, 1], [1, -1]]) {

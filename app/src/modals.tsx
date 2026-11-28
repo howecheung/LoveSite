@@ -1,13 +1,13 @@
 // Bottom-sheet forms: diary / album / wish / moment / lock / profile ...
 import { useEffect, useState } from 'react'
 import { Button, Input, Tag, Modal } from 'animal-island-ui'
-import { pb, showToast } from './core'
+import { pb, showToast, saveSettings, SS } from './core'
 import { Ic } from './Icons'
 import { sha256, readExif, hashPwd, newSalt } from './utils'
 import { Av } from './pages'
-import { fmtDT, dayStr, today, daysSince, MOODS, MOOD_CN, MOOD_IC, MOOD_TAG, compressImg, buildNotices, clearNotices } from './shared'
+import { fmtDT, dayStr, today, daysSince, MOODS, MOOD_CN, MOOD_IC, MOOD_TAG, compressImg, buildNotices, clearNotices, MAX_ALBUM_PHOTOS } from './shared'
 
-function ModalCard({ kind, rec, data, me, close, reload, go, setUnlocked, mode, setMode }: any) {
+function ModalCard({ kind, rec, data, me, unlocked, close, reload, go, setUnlocked, mode, setMode }: any) {
   const [f, setF] = useState<any>({})
   const [busy, setBusy] = useState(false)
   useEffect(() => {
@@ -44,7 +44,16 @@ function ModalCard({ kind, rec, data, me, close, reload, go, setUnlocked, mode, 
   const TITLE: any = { notice: '通知', days: '恋爱天数', diary: '写日常', album: '新建相册', wish: '添加约定', moment: '添加日子', checkin: '新打卡计划', profile: '我的资料', sitename: '站点名称', about: '关于我们', search: '搜索小站', games: '小游戏', gomoku: '五子棋', 'gomoku-play': '五子棋 · 对局', 'gomoku-local': '五子棋 · 同屏', 'album-view': '相册', lockIn: '解锁私密内容', lockSet: '私密口令', 'diary-edit': '编辑日常', 'wish-edit': '编辑约定', 'moment-edit': '编辑日子', 'checkin-more': '打卡记录', 'msg-del': '删除祝福', 'album-edit': '编辑相册', appearance: '外观模式' }
   const del = (col: string, id: string, label: string) => {
     if (!confirm(`确定删除这条${label}吗？删了就找不回来了。`)) return
-    save(async () => { await pb.collection(col).delete(id) })
+    save(async () => {
+      // 关联数据没有服务端级联：在删除前清掉，避免孤儿记录
+      const cleanup = async (name: string, filter: string) => {
+        const rows = await pb.collection(name).getFullList({ filter }).catch(() => [])
+        for (const r of rows as any[]) await pb.collection(name).delete(r.id).catch(() => {})
+      }
+      if (col === 'diaries') await cleanup('comments', `diary='${id}'`)
+      if (col === 'checkins') await cleanup('ckrecords', `plan='${id}'`)
+      await pb.collection(col).delete(id)
+    })
   }
 
   return (
@@ -66,13 +75,16 @@ function ModalCard({ kind, rec, data, me, close, reload, go, setUnlocked, mode, 
         <div style={{ marginTop: 10 }}>
           {(f.q || '').trim().length >= 1 && (() => {
             const q = f.q.trim()
-            const D = data.diaries.filter((x: any) => (x.text + ' ' + (x.title || '')).includes(q)).slice(0, 6)
+            const hidden = new Set((data.diaries || [])
+              .filter((x: any) => x.private && data.setting?.lockOn && !unlocked)
+              .map((x: any) => x.id))
+            const D = data.diaries.filter((x: any) => !hidden.has(x.id) && ((x.text || '') + ' ' + (x.title || '')).includes(q)).slice(0, 6)
             const A = data.albums.filter((x: any) => x.name.includes(q)).slice(0, 4)
             const W = data.wishes.filter((x: any) => x.text.includes(q)).slice(0, 6)
             const M = data.messages.filter((x: any) => x.text.includes(q)).slice(0, 6)
             const N = (data.moments || []).filter((x: any) => (x.name || '').includes(q)).slice(0, 6)
             const P = (data.checkins || []).filter((x: any) => (x.name || '').includes(q)).slice(0, 6)
-            const C = (data.comments || []).filter((x: any) => (x.text || '').includes(q)).slice(0, 6)
+            const C = (data.comments || []).filter((x: any) => !hidden.has(x.diary) && (x.text || '').includes(q)).slice(0, 6)
             const total = D.length + A.length + W.length + M.length + N.length + P.length + C.length
             return <>
               {D.map((x: any) => (
@@ -124,7 +136,7 @@ function ModalCard({ kind, rec, data, me, close, reload, go, setUnlocked, mode, 
             try {
               const salt = data.setting?.lockSalt
               const h = salt ? await hashPwd((f.pw || '').trim(), salt) : await sha256((f.pw || '').trim())
-              if (h === data.setting?.lockHash) { sessionStorage.setItem('lk', '1'); setUnlocked(true); close() }
+              if (h === data.setting?.lockHash) { SS.set('lk', '1'); setUnlocked(true); close() }
               else setF((x: any) => ({ ...x, msg: '口令不对，再试试' }))
             } catch (e: any) { setF((x: any) => ({ ...x, msg: String(e?.message || e) })) }
             setBusy(false)
@@ -134,6 +146,7 @@ function ModalCard({ kind, rec, data, me, close, reload, go, setUnlocked, mode, 
       </>}
       {kind === 'lockSet' && <>
         <div className="mut" style={{ marginBottom: 10 }}>设一个两人知道的口令。之后所有「私密」日常对 TA 上锁，输入口令才可见。</div>
+        <div className="mut" style={{ marginBottom: 10, fontSize: 12 }}>口令锁使用浏览器 WebCrypto，需要 https 或 localhost；纯 http 局域网无法设置/解锁。</div>
         <input className="ta2" type="password" placeholder="新口令（至少 4 位）" value={f.p1 || ''} onChange={(e) => setF({ ...f, p1: e.target.value })} />
         <input className="ta2" type="password" placeholder="再输一次" value={f.p2 || ''} onChange={(e) => setF({ ...f, p2: e.target.value })} />
         {!data.setting?.lockHash ? null : (
@@ -144,11 +157,11 @@ function ModalCard({ kind, rec, data, me, close, reload, go, setUnlocked, mode, 
         <div style={{ textAlign: 'center', marginTop: 12 }}>
           <Button type="primary" block loading={busy} onClick={() => save(async () => {
             const st = data.setting || {}
+            if (f.p1 && f.p1.trim().length < 4) throw new Error('口令至少 4 位')
             if (f.p1 && f.p1 !== f.p2) throw new Error('两次口令不一致，请重输')
             const patch: any = { lockOn: f.p1 ? true : !!f.on }
             if (f.p1) { const salt = st.lockSalt || newSalt(); patch.lockSalt = salt; patch.lockHash = await hashPwd(f.p1.trim(), salt) }
-            if (st.id) await pb.collection('settings').update(st.id, patch)
-            else await pb.collection('settings').create(patch)
+            await saveSettings(patch)
           })}>{data.setting?.lockHash ? '保存设置' : '设 置'}</Button>
         </div>
         {f.msg && <div style={{ color: 'var(--danger)', fontSize: 13, marginTop: 8 }}>{f.msg}</div>}
@@ -180,16 +193,23 @@ function ModalCard({ kind, rec, data, me, close, reload, go, setUnlocked, mode, 
         </div>
         <div className="li" style={{ border: 0 }}>
           <button className={"tick" + (f.private ? " on" : "")} onClick={() => setF({ ...f, private: !f.private })}>{f.private ? "✓" : ""}</button>
-          <span style={{ fontSize: 14 }}>🔒 仅自己可见</span>
+          <span style={{ fontSize: 14 }}>🔒 私密（需口令解锁）</span>
           <span className="grow" />
           <label className="picbtn"><Ic v="📎" size={13} /> 附图
-            <input type="file" accept="image/*" style={{ display: 'none' }} onChange={async (e) => { const f0 = e.target.files?.[0]; setF({ ...f, photo: f0 ? await compressImg(f0) : null }) }} /></label>
+            <input type="file" accept="image/*" style={{ display: 'none' }} onChange={async (e) => {
+              const f0 = e.target.files?.[0]
+              if (!f0) return
+              // 先读原始文件 EXIF，再压缩（压缩后的 JPEG 已经没有 EXIF）
+              const ex = await readExif(f0)
+              const c = await compressImg(f0)
+              setF((x: any) => ({ ...x, photo: c, photoEx: ex }))
+            }} /></label>
         </div>
         {f.photo && <div className="mut" style={{ margin: '4px 0' }}>已选：{f.photo.name}</div>}
         <div style={{ textAlign: 'center', marginTop: 12 }}>
           <Button type="primary" block loading={busy} disabled={!(f.text || '').trim()} onClick={() => save(async () => {
             const fd: any = { text: f.text.trim(), mood: f.mood, title: f.title || '', private: !!f.private, member: pb.authStore.record?.id }
-            if (f.photo) { fd.photo = f.photo; const ex = await readExif(f.photo); if (ex) fd.exif = JSON.stringify(ex) }
+            if (f.photo) { fd.photo = f.photo; if (f.photoEx) fd.exif = JSON.stringify(f.photoEx) }
             await pb.collection('diaries').create(fd)
           })}>保 存</Button>
         </div>
@@ -211,9 +231,11 @@ function ModalCard({ kind, rec, data, me, close, reload, go, setUnlocked, mode, 
             if ((f.note || '').trim()) fd.note = f.note.trim()
             const exInfo: any = {}
             const up: File[] = []
-            if (f.files?.length) {
+            const picks = (f.files || []).slice(0, MAX_ALBUM_PHOTOS)
+            if ((f.files?.length || 0) > MAX_ALBUM_PHOTOS) showToast(`每本相册最多 ${MAX_ALBUM_PHOTOS} 张，已选前 ${MAX_ALBUM_PHOTOS} 张`)
+            if (picks.length) {
               // 先读原图 EXIF，再逐张压缩（JPEG 压缩会丢掉 EXIF；串行也避免手机端并发解码爆内存）
-              for (const x of f.files) { const r = await readExif(x); if (r) exInfo[x.name] = r; up.push(await compressImg(x)) }
+              for (const x of picks) { const r = await readExif(x); if (r) exInfo[x.name] = r; up.push(await compressImg(x)) }
               fd.photos = up; fd.cover = up[0]
             }
             const rec = await pb.collection('albums').create(fd)
@@ -253,7 +275,7 @@ function ModalCard({ kind, rec, data, me, close, reload, go, setUnlocked, mode, 
         <div style={{ textAlign: 'center', marginTop: 12 }}>
           <Button type="primary" block loading={busy} disabled={!(f.name || '').trim() || (f.lunar ? !(f.lm && f.ld) : !f.day)} onClick={() => save(() => pb.collection('moments').create(
             f.lunar
-              ? { name: f.name.trim(), lunar: true, lunarMD: `${Number(f.lm)}-${Number(f.ld)}`, day: new Date().toISOString().slice(0, 10), yearly: f.yearly !== false }
+              ? { name: f.name.trim(), lunar: true, lunarMD: `${Number(f.lm)}-${Number(f.ld)}`, day: today(), yearly: f.yearly !== false }
               : { name: f.name.trim(), day: f.day, yearly: f.yearly !== false }))}>保 存</Button>
         </div>
       </>}
@@ -300,6 +322,7 @@ function ModalCard({ kind, rec, data, me, close, reload, go, setUnlocked, mode, 
           <Button type="primary" block loading={busy} onClick={() => {
             const body: any = { nickName: f.nickName, gender: f.gender }
             if ((f.p1 || '').length) {
+              if (f.p1.length < 8) { showToast('新密令至少 8 位'); return }
               if (!(f.pw0 || '').length) { showToast('改密令要先输当前密令'); return }
               if (f.p1 !== f.p2) { showToast('两次密令不一样，检查一下'); return }
               body.oldPassword = f.pw0; body.password = f.p1; body.passwordConfirm = f.p2
@@ -320,7 +343,7 @@ function ModalCard({ kind, rec, data, me, close, reload, go, setUnlocked, mode, 
         </div>
         <div className="li" style={{ border: 0 }}>
           <button className={'tick' + (f.private ? ' on' : '')} onClick={() => setF({ ...f, private: !f.private })}>{f.private ? '✓' : ''}</button>
-          <span style={{ fontSize: 14 }}>🔒 仅自己可见</span>
+          <span style={{ fontSize: 14 }}>🔒 私密（需口令解锁）</span>
           <span className="grow" />
           <label className="picbtn"><Ic v="📎" size={13} /> {rec.photo ? '换图' : '附图'}
             <input type="file" accept="image/*" style={{ display: 'none' }} onChange={async (e) => {
@@ -403,6 +426,10 @@ function ModalCard({ kind, rec, data, me, close, reload, go, setUnlocked, mode, 
         <div className="mut" style={{ marginBottom: 8 }}>{rec.emoji} {rec.name} · 最近 30 天</div>
         {(() => {
           const recs = (data.ckrecords || []).filter((r: any) => r.plan === rec.id)
+          const nameOf = (who: string) => {
+            const m = (data.members || []).find((x: any) => x.id === who)
+            return m?.nickName || m?.username || who || '—'
+          }
           const z = (n: number) => String(n).padStart(2, '0')
           const days: any[] = []
           for (let i = 0; i < 30; i++) {
@@ -413,7 +440,7 @@ function ModalCard({ kind, rec, data, me, close, reload, go, setUnlocked, mode, 
           return days.map((x) => (
             <div className="li" key={x.k} style={{ padding: '6px 0' }}>
               <span className="grow" style={{ fontSize: 13.5 }}>{x.k}{x.k === today() ? ' · 今天' : ''}</span>
-              {x.who.length ? <Tag size="small" color="lime-green">{x.who.join(' / ')}</Tag> : <span className="mut">—</span>}
+              {x.who.length ? <Tag size="small" color="lime-green">{x.who.map(nameOf).join(' / ')}</Tag> : <span className="mut">—</span>}
             </div>))
         })()}
         <div style={{ height: 6 }} />
@@ -427,9 +454,7 @@ function ModalCard({ kind, rec, data, me, close, reload, go, setUnlocked, mode, 
         <Input placeholder="情侣小站" value={f.siteName || ''} onChange={(e: any) => setF({ ...f, siteName: e.target.value })} />
         <div style={{ textAlign: 'center', marginTop: 12 }}>
           <Button type="primary" block loading={busy} onClick={() => save(async () => {
-            const s = data.setting
-            if (s) await pb.collection('settings').update(s.id, { siteName: f.siteName || '情侣小站' })
-            else await pb.collection('settings').create({ siteName: f.siteName || '情侣小站' })
+            await saveSettings({ siteName: f.siteName || '情侣小站' })
           })}>保 存</Button>
         </div>
       </>}
@@ -446,11 +471,7 @@ function ModalCard({ kind, rec, data, me, close, reload, go, setUnlocked, mode, 
             const body: any = { ...f }
             if (!/^\d{4}-\d{2}-\d{2}$/.test(body.startDate || '')) body.startDate = dayStr(data.setting?.startDate || '')
             if (!body.startDate) { showToast('请先选择在一起的日子'); return }
-            save(async () => {
-              const s = data.setting
-              if (s) await pb.collection('settings').update(s.id, body)
-              else await pb.collection('settings').create(body)
-            })
+            save(async () => { await saveSettings(body) })
           }}>保 存</Button>
         </div>
       </>}

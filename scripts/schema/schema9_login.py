@@ -1,4 +1,8 @@
-import json, re, urllib.request, os
+import json, re, urllib.request, urllib.error, os
+BOY_PW = os.environ.get("SEED_BOY_PASS", "")
+GIRL_PW = os.environ.get("SEED_GIRL_PASS", "")
+if not BOY_PW or not GIRL_PW:
+    raise SystemExit("请先设置 SEED_BOY_PASS / SEED_GIRL_PASS，脚本不再内置演示口令")
 W = os.environ.get("PBSITE_DIR", ".")
 txt = os.environ.get("PB_CREDENTIALS", "")  # 超管邮箱与口令两行，自行注入
 em = re.search(r"超管 (\S+)", txt).group(1); pw = re.search(r"超管 \S+\s+(\S+)", txt).group(1)
@@ -37,15 +41,15 @@ if "username" not in (pa.get("identityFields") or []):
     print("identityFields:", pa["identityFields"], "→", "ok" if not out.get("_err") else str(out)[:150])
 
 # 2) 设账号
-for mail, uname, upw in [("boy@local.test", "zwh", "123"), ("girl@local.test", "mm", "123")]:
+for mail, uname, upw in [("boy@local.test", "zwh", BOY_PW), ("girl@local.test", "mm", GIRL_PW)]:
     rid = req(f"/api/collections/members/records?filter=email='{mail}'")["items"][0]["id"]
     t = req(f"/api/collections/members/records/{rid}", "PATCH", {"username": uname, "password": upw, "passwordConfirm": upw})
-    print(f"{mail} → {uname}/{upw}:", "成功" if t.get("id") else str(t)[:150])
+    print(f"{mail} → {uname}:", "成功" if t.get("id") else str(t)[:150])
 
-# 3) 实测登录（用用户名 + 短密码）
-for u in ["zwh", "mm"]:
-    ok = req("/api/collections/members/auth-with-password", "POST", {"identity": u, "password": "123"})
-    print(f"用 {u} / 123 登录:", "✓ 成功" if ok.get("token") else str(ok)[:130])
+# 3) 实测登录（用用户名 + 密码）
+for u, p in [("zwh", BOY_PW), ("mm", GIRL_PW)]:
+    ok = req("/api/collections/members/auth-with-password", "POST", {"identity": u, "password": p})
+    print(f"用 {u} 登录:", "✓ 成功" if ok.get("token") else str(ok)[:130])
 # 旧邮箱登录仍可用？
-ok = req("/api/collections/members/auth-with-password", "POST", {"identity": "boy@local.test", "password": "123"})
+ok = req("/api/collections/members/auth-with-password", "POST", {"identity": "boy@local.test", "password": BOY_PW})
 print("邮箱+新密码登录:", "✓ 可用" if ok.get("token") else "不可用")

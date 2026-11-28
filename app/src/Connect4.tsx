@@ -95,10 +95,10 @@ export function C4Home({ go, me }: any) {
   const isToday = (t: number) => new Date(t).toDateString() === new Date().toDateString()
   const rate = (arr: any[]) => {
     const played = arr.filter((x) => x.winner !== 'draw').length
-    const won = arr.filter((x) => x.winner !== 'draw' && (x.winner === 'black' ? x.bid === me.id || (!x.bid && x.bn === myName) : x.wid === me.id || (!x.wid && x.wn === myName))).length
+    const won = arr.filter((x) => x.winner !== 'draw' && (x.winner === 'black' ? x.bId === me.id || (!x.bId && x.bn === myName) : x.wId === me.id || (!x.wId && x.wn === myName))).length
     return played ? Math.round((won / played) * 100) : null
   }
-  const mine2 = hist.filter((x) => (x.bid || x.wid) ? (x.bid === me.id || x.wid === me.id) : (x.bn === myName || x.wn === myName))
+  const mine2 = hist.filter((x) => (x.bId || x.wId) ? (x.bId === me.id || x.wId === me.id) : (x.bn === myName || x.wn === myName))
   const td2 = mine2.filter((x) => isToday(new Date(x.created).getTime()))
   const wr = (label: string, arr: any[]) => <div className="wr"><span className="wn">{label}</span>
     <b className="wB">{rate(arr) === null ? '—' : rate(arr) + '%'}</b><span className="mut">{arr.length} 局</span></div>
@@ -181,7 +181,7 @@ export function C4Live({ id, go, me }: any) {
     recorded.current = gk
     pb.collection('c4r').getFullList({ filter: `game="${gk}"` }).then((l) => { if (!l.length)
       pb.collection('c4r').create({ game: gk, winner: g.winner, bn: g.bnm, wn: g.wnm, bId: g.black, wId: g.white,
-        mv: parseMv(g.moves || '').length, dur: g.dur || 0 }).catch(quiet)
+        mv: parseMv(g.moves || '').length, dur: g.dur || 0 }).catch((e: any) => { if (e?.status !== 400) quiet(e) })
     }).then(() => pb.collection('c4r').getList(1, 200, { sort: '-created', fields: 'id' }))
       .then((pg) => { pg.items.slice(100).forEach((x: any) => pb.collection('c4r').delete(x.id).catch(() => {})) }).catch(quiet)
   }, [g?.winner])
@@ -231,9 +231,9 @@ export function C4Live({ id, go, me }: any) {
   const answer = (ok: boolean) => { if (!ok) { patch({ prop: '', propBy: '' }); return }
     if (g.prop === 'undo') undo()
     else patch({ winner: 'draw', state: 'done', prop: '', propBy: '', dur: Math.round((Date.now() - (g.start || Date.now())) / 1000) }) }
-  const resign = () => patch({ winner: seat === 'black' ? 'white' : 'black', state: 'done', dur: Math.round((Date.now() - (g.start || Date.now())) / 1000) })
+  const resign = () => { if (!confirm('确定认输吗？')) return; patch({ winner: seat === 'black' ? 'white' : 'black', state: 'done', dur: Math.round((Date.now() - (g.start || Date.now())) / 1000) }) }
   const rematch = () => patch({ moves: '', winner: '', state: 'live', prop: '', propBy: '', start: Date.now(), dur: 0, round: (g.round || 1) + 1 })
-  const swap = () => patch({ black: g.white, white: g.black, bnm: g.wnm, wnm: g.bnm, moves: '', winner: '', state: 'live', prop: '', propBy: '', start: Date.now(), dur: 0 })
+  const swap = () => patch({ black: g.white, white: g.black, bnm: g.wnm, wnm: g.bnm, moves: '', winner: '', state: 'live', prop: '', propBy: '', start: Date.now(), dur: 0, round: (g.round || 1) + 1 })
   const takeSeat = (want: string) => patch(want === 'black'
     ? { black: me.id, bnm: myName, white: '', wnm: '', bSeen: Date.now(), state: 'lobby' }
     : { white: me.id, wnm: myName, black: '', bnm: '', wSeen: Date.now(), state: 'lobby' })

@@ -66,14 +66,14 @@ export function nextOccurLunar(md: string, yearly: boolean) {
   const now = new Date()
   const today0 = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
   const startY = solarToLunar(now).lYear
-  if (!startY) return 0
+  if (!startY) return NaN
   for (let y = startY; y <= Math.min(startY + 2, LUNAR_LAST); y++) {
     if (d > monthDays(y, m)) continue
     const s = lunarToSolar(y, m, d).getTime()
     if (s >= today0) return Math.round((s - today0) / 86400000)
     if (!yearly) return Math.round((s - today0) / 86400000)
   }
-  return 0
+  return NaN
 }
 export const lunarToday = () => solarToLunar(new Date()).text
 
