@@ -55,7 +55,7 @@ routerAdd("POST", "/api/ai/backup/upload", (c) => {
   try {
     const L = require(`${__hooks}/lib.js`)
     const name = String(c.request.url.query().get("name") || "")
-    if (!name || name.indexOf("..") >= 0) return c.json(400, { message: "备份文件名不合法" })
+    if (!L.isBackupName(name)) return c.json(400, { message: "备份文件名不合法" })
     const cfg = L.davCfg()
     if (!cfg.url) return c.json(400, { message: "还没配置 WebDAV 地址" })
     const r = L.davCall(cfg, "PUT", name, { "Content-Type": "application/zip" }, $os.readFile(L.bkPath(name)))

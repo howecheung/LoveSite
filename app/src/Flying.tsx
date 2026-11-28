@@ -37,16 +37,20 @@ function Dice({ v, rolling }: any) {
 }
 
 // ===== 共用棋盘 + 骰子 + 任务卡 =====
-function FlyBoard({ p, me0, me1, canAct, rolling, dice, onRoll, task, onTaskDone, winner }: any) {
+function FlyBoard({ p, canAct, rolling, dice, onRoll, task, onTaskDone, winner }: any) {
   return (<>
     <div className="flyboard">
       {Array.from({ length: CELLS }).map((_, i) => {
         const row = Math.floor(i / 6), col = row % 2 ? 5 - (i % 6) : (i % 6)
         const kind = TASK_CELLS.includes(i) ? 'task' : BONUS_CELLS.includes(i) ? 'bonus' : TRAP_CELLS.includes(i) ? 'trap' : i === 0 ? 'start' : i === GOAL ? 'goal' : ''
-        const toks = [p[0] === i && me0, p[1] === i && me1].filter(Boolean)
+        // 两枚棋子都显示；用真实座位判断颜色，不能在 filter 后用下标猜
+        const toks = [
+          { seat: 0, cls: 'tokA', emoji: '🐻', on: p[0] === i },
+          { seat: 1, cls: 'tokB', emoji: '🐰', on: p[1] === i },
+        ].filter((t) => t.on)
         return <div key={i} className={'fcell' + (kind ? ' f' + kind : '')} style={{ gridRowStart: row + 1, gridColumnStart: col + 1 }}>
           <span className="fk">{kind === 'task' ? '💞' : kind === 'bonus' ? '🎁' : kind === 'trap' ? '💤' : kind === 'goal' ? '🏁' : kind === 'start' ? '🏠' : ''}</span>
-          {toks.map((t, k) => <i key={t} className={'ftok ' + (k ? 'tokB' : 'tokA')}>{k ? '🐰' : '🐻'}</i>)}
+          {toks.map((t) => <i key={t.seat} className={'ftok ' + t.cls}>{t.emoji}</i>)}
         </div>
       })}
     </div>
@@ -196,7 +200,7 @@ export function FlyLive({ id, go, me }: any) {
     recorded.current = gk
     pb.collection('flyr').getFullList({ filter: `game="${gk}"` }).then((l) => { if (!l.length)
       pb.collection('flyr').create({ game: gk, winner: g.winner, bn: g.bnm, wn: g.wnm, bId: g.black, wId: g.white,
-        mv: bd.t || 0, dur: g.dur || 0 }).catch(quiet)
+        mv: bd.t || 0, dur: g.dur || 0 }).catch((e: any) => { if (e?.status !== 400) quiet(e) })
     }).then(() => pb.collection('flyr').getList(1, 200, { sort: '-created', fields: 'id' }))
       .then((pg) => { pg.items.slice(100).forEach((x: any) => pb.collection('flyr').delete(x.id).catch(() => {})) }).catch(quiet)
   }, [g?.winner])
@@ -231,7 +235,7 @@ export function FlyLive({ id, go, me }: any) {
         const at = nb.p[nb.turn]
         if (at >= GOAL) { await patch({ moves: JSON.stringify(nb), winner: nb.turn === 0 ? 'black' : 'white', state: 'done', dur: Math.round((Date.now() - (g.start || Date.now())) / 1000) }); return }
         if (TASK_CELLS.includes(at)) nb.task = Math.floor(Math.random() * TASKS.length)
-        else if (TRAP_CELLS.includes(at)) { nb.skip[1 - nb.turn] = false; nb.skip[nb.turn] = false; nb.turn = (nb.turn + 1) % 2; showToast('💤 踩到瞌睡格，停一轮！') }
+        else if (TRAP_CELLS.includes(at)) { nb.skip[nb.turn] = true; nb.turn = (nb.turn + 1) % 2; showToast('💤 踩到瞌睡格，下一轮停一次！') }
         else if (BONUS_CELLS.includes(at)) { /* 再来一轮：turn 不变 */ }
         else nb.turn = (nb.turn + 1) % 2
       }
@@ -244,13 +248,13 @@ export function FlyLive({ id, go, me }: any) {
     nb.turn = (nb.turn + 1) % 2
     patch({ moves: JSON.stringify(nb) })
   }
-  const resign = () => patch({ winner: seat === 'black' ? 'white' : 'black', state: 'done', dur: Math.round((Date.now() - (g.start || Date.now())) / 1000) })
+  const resign = () => { if (!confirm('确定认输吗？')) return; patch({ winner: seat === 'black' ? 'white' : 'black', state: 'done', dur: Math.round((Date.now() - (g.start || Date.now())) / 1000) }) }
   const ask = (what: string) => patch({ prop: what, propBy: seat })
   const answer = (ok: boolean) => { if (!ok) { patch({ prop: '', propBy: '' }); return }
     patch({ winner: 'draw', state: 'done', prop: '', propBy: '', dur: Math.round((Date.now() - (g.start || Date.now())) / 1000) }) }
   const rematch = () => patch({ moves: JSON.stringify(initBd()), winner: '', state: 'live', prop: '', propBy: '', start: Date.now(), dur: 0, round: (g.round || 1) + 1 })
   const myName = me?.nickName || me?.username || '我'
-  const swap = () => { patch({ black: g.white, white: g.black, bnm: g.wnm, wnm: g.bnm, moves: JSON.stringify({ ...initBd(), p: [bd.p[1], bd.p[0]], turn: 0 }), winner: '', state: 'live', start: Date.now(), dur: 0 }) }
+  const swap = () => patch({ black: g.white, white: g.black, bnm: g.wnm, wnm: g.bnm, moves: JSON.stringify(initBd()), winner: '', state: 'live', prop: '', propBy: '', start: Date.now(), dur: 0, round: (g.round || 1) + 1 })
   const takeSeat = (want: string) => patch(want === 'black'
     ? { black: me.id, bnm: myName, white: '', wnm: '', bSeen: Date.now(), state: 'lobby' }
     : { white: me.id, wnm: myName, black: '', bnm: '', wSeen: Date.now(), state: 'lobby' })
@@ -286,7 +290,7 @@ export function FlyLive({ id, go, me }: any) {
               <Button size="small" type="primary" ghost={seat !== 'white'} onClick={() => takeSeat('white')}>🐰 兔</Button>
             </div></>}
         </div>)}
-      <FlyBoard p={bd.p} me0={seat !== 'white'} me1={seat !== 'black'} turn={bd.turn} canAct={myTurn} rolling={rolling} dice={dice} onRoll={doRoll} task={bd.task} onTaskDone={doneTask} winner={g.winner} />
+      <FlyBoard p={bd.p} canAct={myTurn} rolling={rolling} dice={dice} onRoll={doRoll} task={bd.task} onTaskDone={doneTask} winner={g.winner} />
       <div style={{ position: 'relative' }}>
         {!!g.winner && fxOn && <div className="winfx" onClick={() => setFxOn(false)}>
           <div className="wcard">
@@ -303,6 +307,9 @@ export function FlyLive({ id, go, me }: any) {
         <div className="propbar"><span className="grow">{(g.propBy === 'black' ? g.bnm : g.wnm)} 请求和棋</span>
           <Button size="small" type="primary" onClick={() => answer(true)}>同意</Button>
           <Button size="small" ghost onClick={() => answer(false)}>拒绝</Button></div>}
+      {!!g.prop && g.propBy === seat && !g.winner &&
+        <div className="propbar"><span className="grow">已发出和棋请求，等待对方回应…</span>
+          <Button size="small" ghost onClick={() => patch({ prop: '', propBy: '' })}>取消</Button></div>}
       <div className="gfoot">
         {g.winner ? <>
           <span style={{ display: 'flex', gap: 6 }}>
@@ -348,7 +355,7 @@ export function FlyLocal({ go, data }: any) {
             bn: nm2[0], wn: nm2[1], mv: nb.t || 0, dur: Math.round((Date.now() - startRef.current) / 1000) }).catch(() => {})
           return }
         if (TASK_CELLS.includes(at)) nb.task = Math.floor(Math.random() * TASKS.length)
-        else if (TRAP_CELLS.includes(at)) { nb.turn = (nb.turn + 1) % 2; showToast('💤 瞌睡格，停一轮！') }
+        else if (TRAP_CELLS.includes(at)) { nb.skip[nb.turn] = true; nb.turn = (nb.turn + 1) % 2; showToast('💤 瞌睡格，下一轮停一次！') }
         else if (BONUS_CELLS.includes(at)) { /* 再来一轮 */ }
         else nb.turn = (nb.turn + 1) % 2
       }
@@ -366,7 +373,7 @@ export function FlyLocal({ go, data }: any) {
               <div className="st">当前 {bd.p[k]} 格{bd.turn === k && !winner ? ' · 轮到你' : ''}</div></div>
           </div>))}
       </div>
-      <FlyBoard p={bd.p} me0 me1 turn={bd.turn} canAct rolling={rolling} dice={dice} onRoll={doRoll} task={bd.task} onTaskDone={() => { const nb = { ...bd, task: -1, turn: (bd.turn + 1) % 2 }; setBd(nb) }} winner={winner} />
+      <FlyBoard p={bd.p} canAct rolling={rolling} dice={dice} onRoll={doRoll} task={bd.task} onTaskDone={() => { const nb = { ...bd, task: -1, turn: (bd.turn + 1) % 2 }; setBd(nb) }} winner={winner} />
       {winner && fxOn && <div className="winfx" onClick={() => setFxOn(false)}>
         <div className="wcard"><div className="wtrophy"><Ic v="trophy" size={64} /></div><div className="wtxt">{winner} 先落地！</div><div className="wsub">同屏航班 · 掌声响起来</div></div>
         {Array.from({ length: 20 }).map((_, k) => (<i key={k} className="conf" style={{ left: (k * 4.8 + 1.5) + '%', background: CONF[k % 5], animationDelay: ((k % 5) * 0.3) + 's' }} />))}

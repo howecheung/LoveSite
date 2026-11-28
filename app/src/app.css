@@ -6,7 +6,7 @@
   --d-fast: .15s; --d: .25s; --d-slow: .35s;
   /* —— 克制玫瑰奶油 —— */
   --bg: #f8e8ec;
-  --ink1: #3a3038; --ink2: #6d5f68; --ink3: #8f8089;
+  --ink1: #3a3038; --ink2: #6d5f68; --ink3: #746570;
   --accent: #b23a5e; --accent-ink: #7e2c46; --accent-soft: #f5dbe3;
   --line: #f0d9e0; --line-dash: rgba(178, 58, 94, .25);
   --tile1: #fff8f0; --tile2: #fdeef3; --tile3: #fbf3dd;
@@ -16,15 +16,15 @@
   --fs-meta: 12px; --fs-sub: 13.5px; --fs-body: 15px; --fs-h3: 16.5px; --fs-h1: 19px;
 }
 * { box-sizing: border-box; }
-html, body { margin: 0; background: var(--bg);
+html, body { margin: 0; overflow-x: clip; background: var(--bg);
   font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Nunito", "Noto Sans SC", -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "NCE", sans-serif;
   -webkit-tap-highlight-color: transparent; color: var(--ink1); }
 img { max-width: 100%; }
 button { font: inherit; }
 
 .shell { max-width: 1180px; margin: 0 auto; }
-.main { padding: 4px 14px 0; max-width: 700px; margin: 0 auto; }
-.hrow { position: sticky; top: 0; z-index: 65; margin: 0 -14px; padding: 8px 14px 10px; gap: 6px;
+.main { padding: 4px 16px 0; max-width: 700px; margin: 0 auto; }
+.hrow { position: sticky; top: 0; z-index: 65; margin: 0 -16px; padding: 8px 16px 10px; gap: 6px;
   display: flex; align-items: center; justify-content: space-between;
   background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
   border-bottom: 2px solid color-mix(in srgb, var(--line) 70%, transparent); }
@@ -37,7 +37,7 @@ button { font: inherit; }
 
 /* 天数胶囊 / 返回钮 */
 .dchip { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; white-space: nowrap;
-  background: var(--surface); border: 2px solid var(--line); color: var(--accent); font-weight: 800; font-size: var(--fs-meta);
+  background: var(--surface); border: 2px solid var(--line); color: var(--accent-ink); font-weight: 800; font-size: var(--fs-meta);
   border-radius: 999px; padding: 3px 10px; box-shadow: 0 2px 6px rgba(120, 70, 90, .14); }
 .backbtn { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; cursor: pointer; font: inherit;
   font-size: var(--fs-sub); font-weight: 700; color: var(--accent-ink);
@@ -48,7 +48,7 @@ button { font: inherit; }
 .daycard { text-align: center; cursor: pointer; background: var(--hero) !important; }
 .daycard .l1 { font-size: var(--fs-sub); letter-spacing: 2px; color: var(--ink2); }
 .daycard .l2 { font-size: var(--fs-h3); font-weight: 800; color: var(--ink1); margin: 4px 0; }
-.daycard .l2 b { font-size: 52px; color: var(--accent); margin: 0 6px; vertical-align: -4px; }
+.daycard .l2 b { font-size: 52px; color: var(--accent-ink); margin: 0 6px; vertical-align: -4px; }
 .daycard .l3 { font-size: var(--fs-sub); color: var(--ink2); font-variant-numeric: tabular-nums; }
 .daycard .dv { border-top: 2px dashed var(--line-dash); margin: 12px 30px; }
 .daycard .l4 { font-size: var(--fs-sub); font-style: italic; color: var(--accent-ink); }
@@ -187,10 +187,10 @@ button { font: inherit; }
   grid-template-columns: 1fr 1fr 64px 1fr 1fr; align-items: stretch;
   background: var(--surface); border: 2px solid var(--line); border-radius: 999px; padding: 4px 10px;
   box-shadow: 0 8px 24px rgba(110, 75, 90, .22); }
-.tabbar button { border: 0; background: none; color: var(--ink3);
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 11px; padding: 5px 0; border-radius: 14px; }
+.tabbar button { border: 0; background: none; color: var(--ink2);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 12px; padding: 5px 0; border-radius: 14px; }
 .tabbar .ic { font-size: 20px; line-height: 1; }
-.tabbar button.on { color: var(--accent); background: var(--accent-soft); font-weight: 700; }
+.tabbar button.on { color: var(--accent-ink); background: var(--accent-soft); font-weight: 700; }
 .tabbar .plus { grid-column: 3; width: 54px; height: 54px; border-radius: 50%; justify-self: center; align-self: center; margin-top: -30px;
   background: var(--hero); color: var(--accent-ink); border: 4px solid var(--surface); box-shadow: 0 6px 14px rgba(120,70,90,.35);
   padding: 0; line-height: 1; display: flex; align-items: center; justify-content: center; }
@@ -198,10 +198,10 @@ button { font: inherit; }
 
 /* 桌面侧栏 */
 .side { display: none; }
-.side .brand { font-weight: 800; color: var(--accent); padding: 6px 10px 12px; font-size: var(--fs-h3); }
+.side .brand { font-weight: 800; color: var(--accent-ink); padding: 6px 10px 12px; font-size: var(--fs-h3); }
 .side .navb { display: flex; width: 100%; align-items: center; gap: 10px; border: 0; background: none;
   color: var(--ink2); border-radius: 14px; padding: 9px 12px; font-size: var(--fs-body); margin-bottom: 3px; cursor: pointer; font-family: inherit; }
-.side .navb.on { background: var(--accent); color: #fff; font-weight: 700; }
+.side .navb.on { background: var(--accent-soft); color: var(--accent-ink); font-weight: 700; }
 @media (min-width: 900px) {
   .shell { display: flex; max-width: 1400px; padding: 24px 34px; gap: 26px; align-items: flex-start; }
   .side { display: block; position: sticky; top: 20px; flex: 0 0 232px; }
@@ -379,8 +379,8 @@ body.night #errtoast { background: var(--surface); }
    token 取自官方 docs/design-system/css-variables.md，14 条硬规则对齐 design-rules.md —— */
 body.theme-island {
   --bg: #8cc6a0;
-  --ink1: #794f27; --ink2: #725d42; --ink3: #8a7b66;
-  --accent: #19c8b9; --accent-ink: #0f8d82; --accent-soft: #d8f3ef;
+  --ink1: #794f27; --ink2: #725d42; --ink3: #77674f;
+  --accent: #19c8b9; --accent-ink: #0b6b62; --accent-soft: #d8f3ef;
   --line: #e0d6b8; --line-dash: rgba(121, 79, 39, .25);
   --tile1: #f7f3df; --tile2: #fffdf4; --tile3: #e6f9f6;
   --surface: #f7f3df; --hero: linear-gradient(160deg, #f7f3df, #ede4c8);

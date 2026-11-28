@@ -4,7 +4,7 @@ import './app.css'
 import { motion, AnimatePresence, MotionConfig } from 'motion/react'
 import { spring, pageVariants, tapSmall } from './motion'
 import { Ic } from './Icons'
-import { pb, quiet } from './core'
+import { pb, quiet, LS, SS, getSettings } from './core'
 import { TILES, resolveTiles, PageTileMgr } from './Tiles'
 import { lunarToday } from './utils'
 import { today, daysSince, CountNum, Clock, buildNotices } from './shared'
@@ -39,8 +39,16 @@ const NAV = [
 
 export default function App() {
   const [authed, setAuthed] = useState(pb.authStore.isValid)
+  // token 失效（401）或改密后，authStore 会变化；统一回到登录页
+  useEffect(() => {
+    const off = pb.authStore.onChange(() => {
+      if (!pb.authStore.isValid) SS.del('lk')
+      setAuthed(pb.authStore.isValid)
+    })
+    return () => { try { off() } catch { /* ignore */ } }
+  }, [])
   if (!authed) return <Login onOK={() => setAuthed(true)} />
-  return <Site onOut={() => { pb.authStore.clear(); setAuthed(false) }} />
+  return <Site onOut={() => { SS.del('lk'); pb.authStore.clear(); setAuthed(false) }} />
 }
 
 // 上传前压缩：iPhone 48MP 巨照（40MB+）会顶爆服务端请求上限变 400；
@@ -92,9 +100,9 @@ function Site({ onOut }: any) {
   const [me, setMe] = useState<any>(pb.authStore.record || {})
   const [route, setRoute] = useState('home')
   const [loaded, setLoaded] = useState(false)
-  const [data, setData] = useState<any>({ setting: null, diaries: [], albums: [], moments: [], wishes: [], messages: [], checkins: [], ckrecords: [], comments: [] })
-  const [unlocked, setUnlocked] = useState(!!sessionStorage.getItem('lk'))
-  useEffect(() => { const t = setInterval(() => { const v = !!sessionStorage.getItem('lk'); setUnlocked((o) => (o === v ? o : v)) }, 900); return () => clearInterval(t) }, [])
+  const [data, setData] = useState<any>({ setting: null, diaries: [], albums: [], moments: [], wishes: [], messages: [], checkins: [], ckrecords: [], comments: [], members: [] })
+  const [unlocked, setUnlocked] = useState(!!SS.get('lk'))
+  useEffect(() => { const t = setInterval(() => { const v = !!SS.get('lk'); setUnlocked((o) => (o === v ? o : v)) }, 900); return () => clearInterval(t) }, [])
   const [modal, setModal] = useState<string | null>(null)
   const [rec, setRec] = useState<any>(null)
   // 打开某个弹窗；带记录时用于「编辑/删除」既有内容
@@ -106,18 +114,19 @@ function Site({ onOut }: any) {
     if (busy.current) { pending.current = true; return }
     busy.current = true
     try {
-      const [setting, diaries, albums, moments, wishes, messages, checkins, ckrecords, comments] = await Promise.all([
-        pb.collection('settings').getList(1, 1).then((p: any) => p.items[0] || null).catch(quiet),
+      const [setting, diaries, albums, moments, wishes, messages, checkins, ckrecords, comments, members] = await Promise.all([
+        getSettings().catch(quiet),
         pb.collection('diaries').getFullList({ sort: '-created', expand: 'member' }).catch(quiet),
         pb.collection('albums').getFullList({ sort: '-created', expand: 'member' }).catch(quiet),
         pb.collection('moments').getFullList({ sort: 'day' }).catch(quiet),
         pb.collection('wishes').getFullList({ sort: '-created' }).catch(quiet),
         pb.collection('messages').getFullList({ sort: '-created' , expand: 'member' }).catch(quiet),
         pb.collection('checkins').getFullList({ sort: 'created' }).catch(quiet),
-        pb.collection('ckrecords').getFullList({ filter: `day='${today()}'` }).catch(quiet),
+        pb.collection('ckrecords').getFullList({ sort: '-day' }).catch(quiet),
         pb.collection('comments').getFullList({ sort: 'id', expand: 'member' }).catch(quiet),
+        pb.collection('members').getFullList().catch(quiet),
       ])
-      setData({ setting, diaries: diaries || [], albums: albums || [], moments: moments || [], wishes: wishes || [], messages: messages || [], checkins: checkins || [], ckrecords: ckrecords || [], comments: comments || [] })
+      setData({ setting, diaries: diaries || [], albums: albums || [], moments: moments || [], wishes: wishes || [], messages: messages || [], checkins: checkins || [], ckrecords: ckrecords || [], comments: comments || [], members: members || [] })
     } finally {
       busy.current = false
       setMe(pb.authStore.record || {})
@@ -129,7 +138,7 @@ function Site({ onOut }: any) {
 
   useEffect(() => {
     load()
-    const cols = ['diaries', 'albums', 'moments', 'wishes', 'messages', 'checkins', 'ckrecords', 'settings', 'comments']
+    const cols = ['diaries', 'albums', 'moments', 'wishes', 'messages', 'checkins', 'ckrecords', 'settings', 'comments', 'members']
     let t: any = null
     const h = () => { clearTimeout(t); t = setTimeout(load, 250) }   // 250ms 内多次变更合并成一次刷新
     cols.forEach((c) => pb.collection(c).subscribe('*', h).catch(quiet))
@@ -139,8 +148,8 @@ function Site({ onOut }: any) {
   const [dir, setDir] = useState(0)
   const [ctx, setCtx] = useState<any>(null)
   const [agrid, setAgrid] = useState(false)
-  const [imgQ, setImgQ] = useState(() => (localStorage.getItem('ai-img') === 'hd' ? 'hd' : 'lite'))
-  useEffect(() => { localStorage.setItem('ai-img', imgQ) }, [imgQ])
+  const [imgQ, setImgQ] = useState(() => (LS.get('ai-img') === 'hd' ? 'hd' : 'lite'))
+  useEffect(() => { LS.set('ai-img', imgQ) }, [imgQ])
   const noticeN = buildNotices(data, me).length
   const MAINR = ['home', 'diary', 'album', 'more']
   const stack = useRef<string[]>([])
@@ -155,21 +164,21 @@ function Site({ onOut }: any) {
     const prev = stack.current.pop() || 'home'
     setDir(-1); setRoute(prev); window.scrollTo(0, 0)
   }
-  const [theme, setTheme] = useState(() => { const t = localStorage.getItem('ai-theme'); return t === 'island' ? 'island' : 'rose' })
+  const [theme, setTheme] = useState(() => { const t = LS.get('ai-theme'); return t === 'island' ? 'island' : 'rose' })
   // 外观模式三态：浅色 / 深色 / 跟随系统（旧的两个 key 兼容读一次）
   const [mode, setMode] = useState<'light' | 'dark' | 'auto'>(() => {
-    const v = localStorage.getItem('ai-mode')
+    const v = LS.get('ai-mode')
     if (v === 'light' || v === 'dark' || v === 'auto') return v
-    if (localStorage.getItem('ai-night-auto') === '1') return 'auto'
-    return localStorage.getItem('ai-night') === '1' ? 'dark' : 'light'
+    if (LS.get('ai-night-auto') === '1') return 'auto'
+    return LS.get('ai-night') === '1' ? 'dark' : 'light'
   })
   const [sysDark, setSysDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches)
   const night = mode === 'dark' || (mode === 'auto' && sysDark)
-  useEffect(() => { document.body.classList.toggle('theme-island', theme === 'island'); localStorage.setItem('ai-theme', theme) }, [theme])
+  useEffect(() => { document.body.classList.toggle('theme-island', theme === 'island'); LS.set('ai-theme', theme) }, [theme])
   useEffect(() => {
-    localStorage.setItem('ai-mode', mode)
-    localStorage.removeItem('ai-night')
-    localStorage.removeItem('ai-night-auto')
+    LS.set('ai-mode', mode)
+    LS.del('ai-night')
+    LS.del('ai-night-auto')
     const mq = window.matchMedia('(prefers-color-scheme: dark)')
     const on = () => setSysDark(mq.matches)
     on()
@@ -180,16 +189,16 @@ function Site({ onOut }: any) {
 
   // 每日一次浏览器提醒：纪念日临近、今天还没打卡
   useEffect(() => {
-    if (localStorage.getItem('ai-remind') !== '1') return
+    if (LS.get('ai-remind') !== '1') return
     const check = () => {
       try {
         const day = today()
-        if (localStorage.getItem('ai-remind-day') === day) return
+        if (LS.get('ai-remind-day') === day) return
         if (!('Notification' in window) || Notification.permission !== 'granted') return
         const n = buildNotices(data, me)
         if (!n.length) return
         new Notification('情侣小站', { body: n.slice(0, 2).map((x: any) => x.t).join('；'), icon: '/icons/icon-192.png' })
-        localStorage.setItem('ai-remind-day', day)
+        LS.set('ai-remind-day', day)
       } catch { /* 浏览器不支持时静默跳过 */ }
     }
     const t = setInterval(check, 30 * 60000)
@@ -256,7 +265,7 @@ function Site({ onOut }: any) {
                   </Card>
                 ))}
               </div>
-              <HomeExtra data={data} go={go} />
+              <HomeExtra data={data} go={go} unlocked={unlocked} />
               {!data.diaries.length && !data.albums.length && !data.moments.length && !data.wishes.length && (
                 <Card color="app-yellow" className="blk">
                   <Title size="small" variant="tab">三步点亮小岛</Title>
@@ -272,14 +281,14 @@ function Site({ onOut }: any) {
           {route === 'album' && <Albums data={data} reload={load} onAdd={() => setModal('album')} go={go} grid={agrid} setGrid={setAgrid} />}
           {route === 'promise' && <Wishes data={data} reload={load} onAdd={() => setModal('wish')} onEdit={edit} />}
           {route === 'countdown' && <Moments data={data} reload={load} onAdd={() => setModal('moment')} onEdit={edit} />}
-          {route === 'checkin' && <Checkin data={data} reload={load} me={me.nickName || me.username || '我'} onAdd={() => setModal('checkin')} onEdit={edit} />}
+          {route === 'checkin' && <Checkin data={data} reload={load} me={me} onAdd={() => setModal('checkin')} onEdit={edit} />}
           {route === 'message' && <Msgs data={data} reload={load} me={me.nickName || me.username || '我'} myId={me.id} onEdit={edit} />}
           {route === 'tools' && <Tools data={data} reload={load} />}
           {route === 'backup' && <BackupPage reload={load} />}
           {route === 'about' && <About data={data} />}
           {route === 'more' && <More data={data} onOut={onOut} setModal={setModal} me={me} go={go} mode={mode} theme={theme} setTheme={setTheme} imgQ={imgQ} setImgQ={setImgQ} />}
           {route === 'games' && <Games go={go} />}
-          {route === 'footprint' && <Footprint data={data} />}
+          {route === 'footprint' && <Footprint data={data} unlocked={unlocked} />}
           {route === 'tilemgr' && <PageTileMgr data={data} />}
           {route === 'album-view' && <AlbumView id={ctx} data={data} reload={load} go={go} onEdit={edit} />}
           {route === 'gomoku' && <GomokuHome data={data} go={go} me={me} />}
@@ -304,7 +313,7 @@ function Site({ onOut }: any) {
         {NAV.filter(n=>n.k==='album'||n.k==='more').map((n) => <TabBtn key={n.k} n={n} on={route === n.k} go={go} />)}
       </div>}
 
-      {modal && <ModalCard kind={modal} rec={rec} data={data} me={me} close={() => { setModal(null); setRec(null) }} reload={load} go={go} setUnlocked={setUnlocked} mode={mode} setMode={setMode} />}
+      {modal && <ModalCard kind={modal} rec={rec} data={data} me={me} unlocked={unlocked} close={() => { setModal(null); setRec(null) }} reload={load} go={go} setUnlocked={setUnlocked} mode={mode} setMode={setMode} />}
     </Background>
     </MotionConfig>
   )

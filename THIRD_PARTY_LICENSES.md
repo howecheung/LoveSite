@@ -1,6 +1,6 @@
 # 第三方许可
 
-本仓库引用的 PocketBase 软件许可原文如下；另依赖 animal-island-ui / Motion / Phosphor Icons (MIT)、Nunito + Noto Sans SC + Noto Color Emoji 子集 (SIL OFL)、Microsoft Fluent Emoji 图标构图 (MIT)。
+本仓库引用的 PocketBase 软件许可原文如下；另依赖 animal-island-ui / Motion / Phosphor Icons (MIT)、Leaflet (BSD-2-Clause)、OpenStreetMap 数据 (ODbL)、Nunito + Noto Sans SC + Noto Color Emoji 子集 (SIL OFL)、Microsoft Fluent Emoji 图标构图 (MIT)。可选的高德 JS API 为商业服务，使用前请遵守高德开放平台条款。
 
 ---
 

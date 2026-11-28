@@ -49,8 +49,10 @@ function wgs2gcj(lng: number, lat: number): [number, number] {
   return [lng + dLng, lat + dLat]
 }
 
+const ymd = (v: any) => String(v || '').slice(0, 10).replace(/:/g, '-')
+
 // 从 albums.exifs / diaries.exif 里挑出带 GPS 的照片
-function collect(data: any): Spot[] {
+function collect(data: any, hidePrivate: boolean): Spot[] {
   const out: Spot[] = []
   const ok = (g: any) => Array.isArray(g) && g.length >= 2 && isFinite(Number(g[0])) && isFinite(Number(g[1])) && !(Number(g[0]) === 0 && Number(g[1]) === 0)
   for (const a of data.albums || []) {
@@ -62,19 +64,20 @@ function collect(data: any): Spot[] {
       out.push({
         key: a.id + p, lat: Number(e.gps[0]), lng: Number(e.gps[1]),
         url: pb.files.getURL(a, p, { thumb: '240x240' }), big: pb.files.getURL(a, p),
-        from: a.name || '相册', date: String(e.date || a.created || '').slice(0, 10),
+        from: a.name || '相册', date: ymd(e.date || a.created),
       })
     }
   }
   for (const d of data.diaries || []) {
     if (!d.photo) continue
+    if (hidePrivate && d.private) continue
     let e: any = null
     try { e = JSON.parse(d.exif || 'null') } catch { e = null }
     if (!e || !ok(e.gps)) continue
     out.push({
       key: d.id, lat: Number(e.gps[0]), lng: Number(e.gps[1]),
       url: pb.files.getURL(d, d.photo, { thumb: '240x240' }), big: pb.files.getURL(d, d.photo),
-      from: '恋爱日常', date: String(e.date || d.created || '').slice(0, 10),
+      from: '恋爱日常', date: ymd(e.date || d.created),
     })
   }
   return out.sort((a, b) => (a.date < b.date ? 1 : -1))
@@ -84,12 +87,20 @@ function collect(data: any): Spot[] {
 const PIN_CSS = 'display:block;width:58px;text-align:center;cursor:pointer'
 const IMG_CSS = 'width:52px;height:52px;object-fit:cover;border-radius:14px;border:3px solid #fff;box-shadow:0 4px 12px rgba(0,0,0,.28);background:#fff;display:block;margin:0 auto'
 const BADGE_CSS = 'display:inline-block;margin-top:2px;font-size:10.5px;line-height:14px;color:#fff;background:#c2456e;border-radius:8px;padding:0 5px'
-const pin = (s: Spot) => `<span data-k="${s.key}" style="${PIN_CSS}"><img src="${s.url}" alt="" style="${IMG_CSS}"/><b style="${BADGE_CSS}">${s.date.slice(5)}</b></span>`
+const ENT: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }
+const esc = (v: any) => String(v).replace(/[&<>"']/g, (c) => ENT[c])
+const pin = (s: Spot) => `<span data-k="${esc(s.key)}" style="${PIN_CSS}"><img src="${esc(s.url)}" alt="" style="${IMG_CSS}"/><b style="${BADGE_CSS}">${esc(s.date.slice(5))}</b></span>`
 
 // ---------- 高德 ----------
 function AmapView({ spots, onPick, onFit }: any) {
   const box = useRef<HTMLDivElement>(null)
   const map = useRef<any>(null)
+  const api = useRef<any>(null)
+  const markers = useRef<any[]>([])
+  const fitted = useRef(false)
+  const [ready, setReady] = useState(false)
+  const [failed, setFailed] = useState(false)
+  // 地图只建一次；数据刷新只更新 marker，避免每次实时同步都重置缩放/位置
   useEffect(() => {
     let dead = false
     ;(async () => {
@@ -102,32 +113,54 @@ function AmapView({ spots, onPick, onFit }: any) {
           zoom: 4, center: [108.5, 32.5], viewMode: '2D', zooms: [3, 18],
           mapStyle: night ? 'amap://styles/dark' : 'amap://styles/whitesmoke',
         })
+        api.current = AMap
         map.current = m
-        for (const s of spots) {
-          const [lng, lat] = wgs2gcj(s.lng, s.lat)
-          const mk = new AMap.Marker({
-            position: [lng, lat], content: pin(s), anchor: 'bottom-center', title: `${s.from} · ${s.date}`,
-          })
-          m.add(mk)
-        }
-        const fit = () => m.setFitView(undefined, false, [70, 70, 70, 70], 13)
-        onFit(fit)
-        if (spots.length) fit()
+        onFit(() => m.setFitView(markers.current, false, [70, 70, 70, 70], 13))
+        setReady(true)
       } catch (e: any) {
-        onFit(() => {})
-        console.warn('amap load failed', e)
+        if (!dead) {
+          onFit(() => {})
+          setFailed(true)
+          console.warn('amap load failed', e)
+        }
       }
     })()
-    return () => { dead = true; map.current?.destroy?.(); map.current = null }
+    return () => {
+      dead = true
+      markers.current = []
+      map.current?.destroy?.()
+      map.current = null
+      api.current = null
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [spots])
-  // 自定义 content 的点击不一定会冒泡成 AMap 的 marker click，这里用委托兜住
+  }, [])
+  useEffect(() => {
+    const m = map.current, AMap = api.current
+    if (!ready || !m || !AMap) return
+    for (const mk of markers.current) { try { m.remove(mk) } catch { /* ignore */ } }
+    markers.current = []
+    if (!spots.length) { fitted.current = false; return }
+    for (const s of spots) {
+      const [lng, lat] = wgs2gcj(s.lng, s.lat)
+      const mk = new AMap.Marker({
+        position: [lng, lat], content: pin(s), anchor: 'bottom-center', title: `${s.from} · ${s.date}`,
+      })
+      m.add(mk)
+      markers.current.push(mk)
+    }
+    if (!fitted.current) {
+      m.setFitView(markers.current, false, [70, 70, 70, 70], 13)
+      fitted.current = true
+    }
+  }, [spots, ready])
+  // 自定义 content 的点击不一定冒泡成 AMap 的 marker click，这里用委托兜住
   const pick = (e: any) => {
     const el = e.target.closest?.('[data-k]')
     if (!el) return
     const s = spots.find((x: Spot) => x.key === el.getAttribute('data-k'))
     if (s) onPick(s)
   }
+  if (failed) return <OsmView spots={spots} onPick={onPick} onFit={onFit} />
   return <div className="fpbox" ref={box} onClick={pick} />
 }
 
@@ -165,8 +198,9 @@ function OsmView({ spots, onPick, onFit }: any) {
   return <div className="fpbox" ref={box} />
 }
 
-export function Footprint({ data }: any) {
-  const spots = useMemo(() => collect(data), [data])
+export function Footprint({ data, unlocked }: any) {
+  const hidePrivate = !!data.setting?.lockOn && !unlocked
+  const spots = useMemo(() => collect(data, hidePrivate), [data, hidePrivate])
   const [cur, setCur] = useState<Spot | null>(null)
   const [big, setBig] = useState('')
   const fit = useRef<() => void>(() => {})

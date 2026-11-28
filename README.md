@@ -21,10 +21,11 @@
 | 双主题配色 | 玫瑰奶油 / 森绿 × 浅色 / 深色（token 体系，localStorage 记忆） |
 | PWA | 添加到主屏幕，全屏无浏览器框 |
 
-## 技术栈（全开源链路）
+## 技术栈
 
 - 前端：React 19 + Vite + TypeScript + [animal-island-ui](https://github.com/guokaigdg/animal-island-ui) (MIT) + [Motion](https://motion.dev) (MIT) + [Phosphor Icons](https://phosphoricons.com) (MIT)
 - 后端：[PocketBase](https://pocketbase.io) 单文件（账号、数据、文件、实时订阅、管理面板）
+- 地图：默认 [Leaflet](https://leafletjs.com) + OpenStreetMap（BSD-2 / ODbL）；配置 `VITE_AMAP_KEY` 后改用高德 JS API（商业服务，需遵守高德条款）
 - 字体：Nunito + Noto Sans SC（SIL OFL）
 
 ## 快速开始
@@ -39,8 +40,10 @@ cd app && npm install && npm run build   # 产物在 app/dist
 ./pocketbase serve :8094
 ```
 
-首次打开 `http://<主机>:8094/_/` 建超管账号，再在管理面板的 `members` 集合里**手动添加两个成员账号**（该集合已禁用自助注册）。默认两个账号是 `zwh` / `123`（男孩）和 `mm` / `123`（女孩）——仅供本地试跑，正式部署请务必改掉。PocketBase 的密码字段允许 1 位以上，但短密码只适合内网自用。
+首次打开 `http://<主机>:8094/_/` 建超管账号，再在管理面板的 `members` 集合里**手动添加两个成员账号**（该集合已禁用自助注册）。用户名和密码请自己设置，仓库不内置可用账号；不要使用 `123` 这类示例口令。PocketBase 的密码字段服务端仍允许 1 位，但正式部署请用强口令。
 数据表由 `pb_migrations/` 自动创建（`members/diaries/albums/moments/wishes/messages/checkins/gmk/c4/fly/bkcfg` 等）。
+
+> **私密口令锁需要安全上下文**：口令哈希走浏览器 WebCrypto，只有 `https` 或 `localhost` 可用；用 `http://局域网IP:8094` 打开时无法设置/解锁，页面会明确提示。
 
 > **pb_hooks 必须带上**：`pb_hooks/` 提供 `/api/ai/backup/*`（完整备份 + WebDAV 上传）。
 > PocketBase 默认只到**可执行文件同级目录**找 `pb_hooks`，放到别处要加 `--hooksDir 路径`。
@@ -82,14 +85,14 @@ docs/           PocketBase 官方更新日志存档
 PB_URL=http://127.0.0.1:8094 SMOKE_USER_1=你的账号 SMOKE_USER_2=对方账号 SMOKE_PASS=你的密码 node scripts/smoke.mjs
 ```
 
-跑 48 项接口检查：认证、读写权限负例、点赞计数、相册追加、三款游戏建房→落子→判胜→战绩→删局、改密兜底。默认值只是本地开发示例，**自己的环境必须用环境变量覆盖**：
+跑 48 项接口检查：认证、读写权限负例、点赞计数、相册追加、三款游戏建房→落子→判胜→战绩→删局、改密兜底。运行前**必须设置 `SMOKE_PASS`**，其余按自己的环境覆盖：
 
-| 变量 | 默认（仅本地示例） |
+| 变量 | 默认 |
 |---|---|
 | `PB_URL` | `http://127.0.0.1:8094` |
-| `SMOKE_USER_1` / `SMOKE_USER_2` | `zwh` / `mm` |
-| `SMOKE_PASS` | `12345678` |
-| `SMOKE_ADMIN_EMAIL` / `SMOKE_ADMIN_PASS` | 空（改密项失败时用超管复原） |
+| `SMOKE_USER_1` / `SMOKE_USER_2` | `zwh` / `mm`（建议显式设置） |
+| `SMOKE_PASS` | **必填**，自己成员的密码 |
+| `SMOKE_ADMIN_EMAIL` / `SMOKE_ADMIN_PASS` | 空（不配置则跳过改密兜底） |
 
 前端类型检查与构建：`cd app && npm run typecheck && npm run build`（tsconfig 已开启 `noUnusedLocals` / `noUnusedParameters`）。
 
@@ -98,7 +101,7 @@ PB_URL=http://127.0.0.1:8094 SMOKE_USER_1=你的账号 SMOKE_USER_2=对方账号
 一条命令提升版本并构建，**不需要手改 `sw.js` 或页面里的版本号**：
 
 ```bash
-cd app && npm run release      # npm version patch + vite build
+cd app && npm run release      # npm version patch + typecheck + vite build
 ```
 
 - `vite.config.ts` 把 `package.json` 的 version 注入前端（`__APP_VERSION__`，更多页底部与导出 JSON 的 `v` 字段都用它）
@@ -117,4 +120,4 @@ gh release create "v$V" --target main --title "v$V" --notes-file .release-notes.
 
 ## 第三方许可
 
-animal-island-ui、Motion、Phosphor Icons、PocketBase 均为 MIT；字体为 SIL OFL；PWA 图标构图元素来自 Microsoft Fluent Emoji（MIT）。本仓库代码以 MIT 授权发布。
+animal-island-ui、Motion、Phosphor Icons、PocketBase 均为 MIT；Leaflet 为 BSD-2-Clause；OpenStreetMap 数据为 ODbL；高德 JS API 为商业服务（仅在选择高德底图时使用）；字体为 SIL OFL；PWA 图标构图元素来自 Microsoft Fluent Emoji（MIT）。本仓库代码以 MIT 授权发布。

@@ -13,12 +13,12 @@ rsync -a --delete --exclude '.env*' --exclude __pycache__ --exclude '*.pyc' \
   --exclude node_modules --exclude dist --exclude pb_data --exclude pb_public \
   --exclude shots --exclude pocketbase --exclude pb.log --exclude CREDENTIALS.txt \
   --exclude backup.py --exclude deploy.sh --exclude build.sh --exclude buildonly.sh \
-  "$SRC/app" "$SRC/pb_migrations" "$SRC/tests" "$OUT/"
-rm -rf "$OUT/pb_hooks"
+  "$SRC/app" "$SRC/pb_migrations" "$SRC/pb_hooks" "$SRC/tests" "$OUT/"
 mkdir -p "$OUT/scripts"
 rsync -a --delete --exclude publish_github.sh --exclude __pycache__ --exclude "*.pyc" "$SRC/scripts/" "$OUT/scripts/"
 rm -f "$OUT/scripts/publish_github.sh"
-cp "$SRC/CHANGELOG.md" "$SRC/README_public.md" "$SRC/LICENSE" "$SRC/THIRD_PARTY_LICENSES.md" "$OUT/" 2>/dev/null || true
+cp "$SRC/CHANGELOG.md" "$SRC/LICENSE" "$SRC/THIRD_PARTY_LICENSES.md" "$OUT/" 2>/dev/null || true
+if [ -f "$SRC/README_public.md" ]; then cp "$SRC/README_public.md" "$OUT/"; else cp "$SRC/README.md" "$OUT/" 2>/dev/null || true; fi
 
 echo "== 2. 脱敏 =="
 sed -i "s/12345678/<BOY_PW>/g; s/87654321/<GIRL_PW>/g" "$OUT"/tests/*.py "$OUT"/scripts/schema/*.py 2>/dev/null || true
@@ -34,10 +34,15 @@ if grep -rEn "password:.123" "$OUT"/tests "$OUT"/scripts; then echo "!! 测试�
 if grep -rn "123" "$OUT"/tests/*.py | grep -vE "TEST_PW|E2E_PW|len|slice|1234" | grep -E "'123'|\\"123\\"" ; then echo "!! 口令字面量残留，拒推"; exit 1; fi
 echo "测试口令已净化"
 sed -i "/CREDENTIALS.txt/d; /局域网 /d; /远程 https/d" "$OUT"/CHANGELOG.md 2>/dev/null || true
-SCANPAT="12345678\\|87654321\\|aicouple2026\\|Couple2026\\|tail5816f3"
+# 不要把真实口令/Key 写死在这里：从本地环境变量注入（正则片段，多个用 \| 分隔）
+SCANPAT="${SECRET_SCAN_PATTERN:-}"
 KEYVAL=$(grep -h "^VITE_AMAP" "$SRC/app/.env.local" 2>/dev/null | cut -d= -f2 | tr '\n' '\\' | sed 's/.$//')
-[ -n "$KEYVAL" ] && SCANPAT="$SCANPAT\\|$KEYVAL"
-grep -rn "$SCANPAT" "$OUT" --include="*.py" --include="*.md" --include="*.ts*" && { echo "!! 仍有敏感残留"; exit 1; } || echo "敏感扫描通过"
+[ -n "$KEYVAL" ] && SCANPAT="${SCANPAT:+$SCANPAT\\|}$KEYVAL"
+if [ -n "$SCANPAT" ]; then
+  grep -rn "$SCANPAT" "$OUT" --include="*.py" --include="*.md" --include="*.ts*" && { echo "!! 仍有敏感残留"; exit 1; } || echo "敏感扫描通过"
+else
+  echo "未配置 SECRET_SCAN_PATTERN，跳过敏感扫描"
+fi
 
 
 echo "== 2.5 凭据引用改环境变量（公开仓可独立运行） =="
@@ -57,7 +62,7 @@ PYEOF
 if grep -rIn "CREDENTIALS.txt\|/vol1/" "$OUT" --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=dist --exclude=README.md --exclude=.gitignore; then echo "!! 本机路径/凭据文件引用残留"; exit 1; else echo "路径重写完成"; fi
 
 echo "== 3. 公开文档 =="
-cp "$OUT/README_public.md" "$OUT/README.md" && rm -f "$OUT/README_public.md"
+if [ -f "$OUT/README_public.md" ]; then cp "$OUT/README_public.md" "$OUT/README.md" && rm -f "$OUT/README_public.md"; fi
 
 echo "== 4. git 提交推送 =="
 cd "$OUT"
@@ -81,5 +86,7 @@ if [ "${1:-}" = "--push" ]; then
   git remote remove origin 2>/dev/null || true
   git remote add origin "https://x-access-token:${TOKEN}@github.com/${OWNER}/LoveSite.git"
   git push -q -f -u origin main
+  # 不要在 .git/config 里留下带 token 的 remote URL
+  git remote set-url origin "https://github.com/${OWNER}/LoveSite.git"
   echo "== 推送完成 =="
 fi
