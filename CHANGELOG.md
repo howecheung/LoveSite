@@ -2,6 +2,12 @@
 
 本文件记录本项目自身的版本变化。PocketBase 官方的更新日志已存档在 [`docs/POCKETBASE_CHANGELOG.md`](docs/POCKETBASE_CHANGELOG.md)。
 
+## v0.0.7
+
+- 备份设置改走服务端 `/api/ai/backup/save`：修复 `webdavPass` 作为 hidden 字段时，成员直接写 `bkcfg` 会被 PocketBase 静默丢弃，导致 WebDAV 密码保存不上、重启后失效
+- `pb_hooks` 新增保存路由，只接受 WebDAV 配置白名单字段；密码留空保留原值，支持 `clearPass` 显式清空
+- 部署本版需同时更新前端静态文件和 `pb_hooks`（旧 hooks 没有 save 路由）
+
 ## v0.0.6
 
 - 私密日记：搜索、首页、足迹统一遵守口令锁，文案改为「私密（需口令解锁）」；退出登录清除解锁状态

@@ -1,6 +1,6 @@
 {
   "name": "app",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "情侣小站前端（React + Vite + TypeScript）",
   "private": true,
   "type": "module",

@@ -51,6 +51,43 @@ routerAdd("POST", "/api/ai/backup/test-dav", (c) => {
   }
 }, auth())
 
+// 保存 WebDAV 配置。webdavPass 是 hidden 字段：成员直接 PATCH/POST 集合时
+// PocketBase 会把它静默丢掉，所以必须由服务端写入。
+routerAdd("POST", "/api/ai/backup/save", (c) => {
+  let body
+  try {
+    const info = c.requestInfo()
+    body = (info && info.body) || {}
+  } catch (e) {
+    return c.json(400, { message: "请求体不合法：" + String(e) })
+  }
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return c.json(400, { message: "请求体不合法" })
+  }
+  try {
+    const rows = $app.findRecordsByFilter("bkcfg", "", "id", 1, 0)
+    const rec = rows.length ? rows[0] : new Record($app.findCollectionByNameOrId("bkcfg"))
+    if (!rows.length) rec.set("auto", true)
+    if (Object.prototype.hasOwnProperty.call(body, "auto")) rec.set("auto", !!body.auto)
+    for (const field of ["webdavUrl", "webdavUser", "webdavDir"]) {
+      if (Object.prototype.hasOwnProperty.call(body, field)) rec.set(field, String(body[field] || "").trim())
+    }
+    // 留空表示保留原密码；要清空显式传 clearPass: true
+    if (typeof body.webdavPass === "string" && body.webdavPass.trim() !== "") rec.set("webdavPass", body.webdavPass)
+    if (body.clearPass === true) rec.set("webdavPass", "")
+    try {
+      $app.save(rec)
+    } catch (e) {
+      // 字段校验是用户输入问题，返回 400；保留 PB 自带的 ApiError 状态码
+      return c.json(Number(e && (e.statusCode || e.status)) || 400, { message: String(e) })
+    }
+    return c.json(200, { ok: true, id: rec.id, auto: !!rec.get("auto"), hasPass: !!rec.get("webdavPass") })
+  } catch (e) {
+    // 查询/创建记录等真正异常才落到 500
+    return c.json(Number(e && (e.statusCode || e.status)) || 500, { message: String(e) })
+  }
+}, auth())
+
 routerAdd("POST", "/api/ai/backup/upload", (c) => {
   try {
     const L = require(`${__hooks}/lib.js`)
