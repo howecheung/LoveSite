@@ -663,8 +663,8 @@ function BackupPage({ reload }: any) {
     try {
       const body: any = { ...patch }
       if ('passDraft' in body) { if (body.passDraft) body.webdavPass = body.passDraft; delete body.passDraft }
-      if (c.id) await pb.collection('bkcfg').update(c.id, body)
-      else await pb.collection('bkcfg').create({ auto: true, ...body })
+      // webdavPass 是 hidden 字段，成员直写集合会被静默丢弃，统一由服务端 hook 写
+      await pb.send('/api/ai/backup/save', { method: 'POST', body })
       await get(); setMsg({ ok: true, text: toast })
     } catch (e: any) { setMsg({ ok: false, text: String(e?.message || e) }) }
     setBusy('')
